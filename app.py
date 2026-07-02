@@ -6,10 +6,11 @@ from io import BytesIO
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+from PIL import Image, ImageDraw, ImageFont
 from supabase import create_client
 
 
-APP_NAME = "Personal Growth"
+APP_NAME = "Loom"
 
 DAY_LETTERS = ["D", "L", "M", "X", "J", "V", "S"]
 CATEGORIES = ["Mañana", "Tarde", "Noche", "Deseables"]
@@ -51,9 +52,58 @@ SPANISH_MONTHS = {
 }
 
 
+def create_app_icon(size: int = 64) -> Image.Image:
+    """Crea el favicon de Loom en memoria.
+
+    Streamlit acepta un objeto PIL como page_icon, así evitamos depender de
+    un archivo externo y el favicon queda alineado con el logo de la app.
+    """
+    img = Image.new("RGBA", (size, size), (255, 255, 255, 0))
+    draw = ImageDraw.Draw(img)
+
+    # Fondo con gradiente cyan, similar al logo del header.
+    top = (14, 116, 144)
+    mid = (6, 182, 212)
+    bottom = (103, 232, 249)
+
+    for y in range(size):
+        if y < size / 2:
+            ratio = y / (size / 2)
+            start, end = top, mid
+        else:
+            ratio = (y - size / 2) / (size / 2)
+            start, end = mid, bottom
+
+        color = tuple(int(start[i] + (end[i] - start[i]) * ratio) for i in range(3))
+        draw.line([(0, y), (size, y)], fill=color + (255,))
+
+    mask = Image.new("L", (size, size), 0)
+    mask_draw = ImageDraw.Draw(mask)
+    mask_draw.rounded_rectangle((2, 2, size - 2, size - 2), radius=18, fill=255)
+    img.putalpha(mask)
+
+    try:
+        font = ImageFont.truetype("DejaVuSans-Bold.ttf", 38)
+    except Exception:
+        font = ImageFont.load_default()
+
+    text = "L"
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+    x = (size - text_w) / 2 - bbox[0]
+    y = (size - text_h) / 2 - bbox[1] - 1
+    draw.text((x, y), text, fill=(255, 255, 255, 255), font=font)
+
+    return img
+
+
+APP_ICON = create_app_icon()
+
+
 st.set_page_config(
     page_title=APP_NAME,
-    page_icon="📈",
+    page_icon=APP_ICON,
     layout="wide",
     initial_sidebar_state="collapsed",
 )
@@ -111,6 +161,7 @@ CUSTOM_CSS = """
         color: #475569;
         font-size: 1.02rem;
         font-weight: 700;
+        padding-top: 0.45rem;
         margin-bottom: 1rem;
     }
 
@@ -1273,6 +1324,392 @@ CUSTOM_CSS = """
         }
     }
 
+
+
+    /* ---------- Mobile v11: final polish ---------- */
+    @media (max-width: 599px) {
+        /* Gana espacio real en iPhone sin provocar overflow. */
+        .block-container {
+            padding-left: 0.55rem !important;
+            padding-right: 0.55rem !important;
+        }
+
+        /* El contenedor del tracker y sus expanders ocupan todo el ancho útil. */
+        .st-key-mobile_tracker,
+        .st-key-mobile_tracker > div,
+        .st-key-mobile_tracker div[data-testid="stExpander"],
+        .st-key-mobile_tracker div[data-testid="stExpanderDetails"] {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            box-sizing: border-box !important;
+        }
+
+        .st-key-mobile_tracker div[data-testid="stExpanderDetails"] {
+            padding-left: 0.38rem !important;
+            padding-right: 0.38rem !important;
+        }
+
+        /* Cada card de hábito se estira al ancho completo del apartado. */
+        .st-key-mobile_tracker [data-testid="stElementContainer"]:has(div[data-testid="stCheckbox"]),
+        .st-key-mobile_tracker div[data-testid="stCheckbox"],
+        .st-key-mobile_tracker div[data-testid="stCheckbox"] label,
+        .mv-static-habit-row {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+        }
+
+        .st-key-mobile_tracker [data-testid="stElementContainer"]:has(div[data-testid="stCheckbox"]) {
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+        }
+
+        /* Compacta ligeramente la card para que se sienta más full-width y menos flotante. */
+        .st-key-mobile_tracker div[data-testid="stCheckbox"] label {
+            padding-left: 0.78rem !important;
+            padding-right: 0.62rem !important;
+        }
+
+        .mv-static-habit-row {
+            padding-left: 0.78rem !important;
+            padding-right: 0.62rem !important;
+        }
+
+        /* Oculta por completo la leyenda azul redundante si quedó en caché/DOM. */
+        .mv-selected-day {
+            display: none !important;
+        }
+
+        /* Botón Guardar semana móvil: texto blanco y glow menos intenso. */
+        .st-key-mobile_save_btn button {
+            color: #ffffff !important;
+            box-shadow: 0 8px 18px rgba(6, 182, 212, 0.20) !important;
+        }
+
+        .st-key-mobile_save_btn button:hover {
+            color: #ffffff !important;
+            box-shadow: 0 8px 18px rgba(6, 182, 212, 0.24) !important;
+        }
+    }
+
+
+    /* ---------- Mobile v12: centered metrics + white primary button text ---------- */
+    /* Streamlit suele pintar el texto del botón dentro de <p>/<span>; si no se
+       fuerza también ahí, puede verse gris aunque el button tenga color blanco. */
+    button[kind="primary"],
+    button[kind="primary"] *,
+    button[kind="primary"] p,
+    button[kind="primary"] span {
+        color: #ffffff !important;
+    }
+
+    @media (max-width: 599px) {
+        /* Centra visualmente las tarjetas de métricas y elimina el sesgo lateral
+           que Streamlit deja por el layout de columnas. */
+        .st-key-mobile_summary {
+            width: 100% !important;
+            max-width: 100% !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+            overflow-x: hidden !important;
+        }
+
+        .st-key-mobile_summary [data-testid="stHorizontalBlock"] {
+            width: 100% !important;
+            max-width: 100% !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+            gap: 0.65rem !important;
+        }
+
+        .st-key-mobile_summary [data-testid="column"],
+        .st-key-mobile_summary [data-testid="stElementContainer"] {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+
+        .st-key-mobile_summary div[data-testid="stMetric"] {
+            width: min(100%, 430px) !important;
+            max-width: 430px !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+            box-sizing: border-box !important;
+        }
+
+        /* Botón móvil: blanco real en todos los nodos internos y glow discreto. */
+        .st-key-mobile_save_btn button,
+        .st-key-mobile_save_btn button *,
+        .st-key-mobile_save_btn button p,
+        .st-key-mobile_save_btn button span {
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+        }
+
+        .st-key-mobile_save_btn button {
+            box-shadow: 0 7px 16px rgba(6, 182, 212, 0.18) !important;
+        }
+
+        .st-key-mobile_save_btn button:hover {
+            box-shadow: 0 8px 18px rgba(6, 182, 212, 0.22) !important;
+        }
+    }
+
+
+    /* ---------- Loom branding ---------- */
+    .pg-brand {
+        display: flex;
+        align-items: center;
+        gap: 0.7rem;
+    }
+
+    .pg-brand-login {
+        justify-content: center;
+        margin-bottom: 0.25rem;
+    }
+
+    .pg-brand-header {
+        margin-bottom: 0.15rem;
+    }
+
+    .pg-brand .pg-title {
+        margin: 0;
+        line-height: 1;
+    }
+
+    .pg-logo-mark {
+        width: 44px;
+        height: 44px;
+        border-radius: 15px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        color: #ffffff;
+        font-size: 1.15rem;
+        font-weight: 950;
+        letter-spacing: -0.08em;
+        background: linear-gradient(135deg, #0e7490 0%, #06b6d4 55%, #67e8f9 100%);
+        box-shadow: 0 12px 26px rgba(6, 182, 212, 0.22);
+        border: 1px solid rgba(255, 255, 255, 0.55);
+    }
+
+    .pg-brand-header .pg-logo-mark {
+        box-shadow: none !important;
+    }
+
+    /* ---------- Mobile metric cards without Streamlit column constraints ---------- */
+    .mobile-metrics-stack {
+        width: 100%;
+        max-width: 100%;
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 0.7rem;
+        margin: 0 auto;
+        box-sizing: border-box;
+    }
+
+    .mobile-metric-card {
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+        background: #ffffff;
+        border: 1px solid #cffafe;
+        border-radius: 18px;
+        padding: 0.95rem 1rem;
+        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.055);
+    }
+
+    .mobile-metric-label {
+        color: #64748b;
+        font-size: 0.83rem;
+        line-height: 1.1;
+        font-weight: 850;
+        margin-bottom: 0.28rem;
+    }
+
+    .mobile-metric-value {
+        color: #0f172a;
+        font-size: 2rem;
+        line-height: 1;
+        font-weight: 950;
+        letter-spacing: -0.04em;
+    }
+
+    @media (min-width: 600px) {
+        .mobile-metrics-stack {
+            max-width: 430px;
+        }
+    }
+
+    @media (max-width: 599px) {
+        .pg-brand-header .pg-logo-mark {
+            width: 38px;
+            height: 38px;
+            border-radius: 13px;
+            font-size: 1rem;
+        }
+
+        .pg-brand-login .pg-logo-mark {
+            width: 42px;
+            height: 42px;
+        }
+
+        .pg-brand-header {
+            gap: 0.55rem;
+        }
+
+        .mobile-metrics-stack {
+            width: 100% !important;
+            max-width: 100% !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+
+        .mobile-metric-card {
+            width: 100% !important;
+            max-width: 100% !important;
+        }
+    }
+
+
+    /* ---------- Mobile v10: final login/header/chart/card polish ---------- */
+    .pg-brand-login {
+        margin-bottom: 0.95rem !important;
+    }
+
+    .pg-brand-login .pg-logo-mark {
+        box-shadow: 0 6px 14px rgba(6, 182, 212, 0.10) !important;
+    }
+
+    @media (max-width: 599px) {
+        .pg-brand-login {
+            margin-bottom: 1.05rem !important;
+        }
+
+        .pg-brand-login .pg-logo-mark {
+            box-shadow: 0 5px 12px rgba(6, 182, 212, 0.08) !important;
+        }
+
+        /* El tracker móvil no debe tener scroll propio ni horizontal.
+           La única navegación debe ser el scroll vertical normal de la página. */
+        .st-key-mobile_tracker,
+        .st-key-mobile_tracker > div,
+        .st-key-mobile_tracker div[data-testid="stExpander"],
+        .st-key-mobile_tracker div[data-testid="stExpanderDetails"],
+        .st-key-mobile_tracker [data-testid="stVerticalBlock"],
+        .st-key-mobile_tracker [data-testid="stElementContainer"],
+        .st-key-mobile_tracker div[data-testid="stCheckbox"],
+        .st-key-mobile_tracker div[data-testid="stCheckbox"] label,
+        .mv-static-habit-row {
+            overflow-x: hidden !important;
+            max-width: 100% !important;
+            overscroll-behavior-x: none !important;
+            touch-action: pan-y !important;
+        }
+
+        .st-key-mobile_tracker {
+            overflow-y: visible !important;
+        }
+
+        .st-key-mobile_tracker div[data-testid="stExpanderDetails"],
+        .st-key-mobile_tracker [data-testid="stVerticalBlock"] {
+            overflow-y: visible !important;
+        }
+
+        /* La gráfica móvil solo conserva eje X. */
+        .st-key-mobile_chart .yaxislayer-above,
+        .st-key-mobile_chart .yaxislayer-below,
+        .st-key-mobile_chart .ytick,
+        .st-key-mobile_chart .ygrid,
+        .st-key-mobile_chart .yzl,
+        .st-key-mobile_chart .ytitle {
+            display: none !important;
+        }
+    }
+
+
+    /* ---------- v11: favicon-aligned branding + global clean chart ---------- */
+    .pg-brand-login .pg-logo-mark {
+        box-shadow: 0 4px 10px rgba(6, 182, 212, 0.06) !important;
+    }
+
+    .pg-brand-login {
+        margin-bottom: 1.18rem !important;
+    }
+
+    .login-card-subtitle {
+        margin-top: 0.35rem !important;
+    }
+
+    /* Para escritorio y móvil: la gráfica conserva solo el eje X.
+       El eje Y queda oculto desde Plotly, pero esto cubre cualquier capa
+       residual que Streamlit/Plotly deje en el DOM. */
+    div[data-testid="stPlotlyChart"] .yaxislayer-above,
+    div[data-testid="stPlotlyChart"] .yaxislayer-below,
+    div[data-testid="stPlotlyChart"] .ytick,
+    div[data-testid="stPlotlyChart"] .ygrid,
+    div[data-testid="stPlotlyChart"] .yzl,
+    div[data-testid="stPlotlyChart"] .ytitle {
+        display: none !important;
+    }
+
+
+    /* ---------- v12: metric cards without internal scroll ---------- */
+    .mobile-summary-shell {
+        width: 100%;
+        max-width: 100%;
+        height: auto !important;
+        max-height: none !important;
+        overflow: visible !important;
+        box-sizing: border-box;
+    }
+
+    @media (max-width: 599px) {
+        .mobile-summary-shell,
+        .mobile-summary-shell *,
+        .mobile-metrics-stack,
+        .mobile-metric-card {
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
+            overflow-y: visible !important;
+            box-sizing: border-box !important;
+        }
+
+        .mobile-summary-shell {
+            display: block !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+
+        .mobile-metrics-stack {
+            display: grid !important;
+            grid-template-columns: 1fr !important;
+            gap: 0.7rem !important;
+            width: 100% !important;
+            max-width: 100% !important;
+        }
+
+        .mobile-metric-card {
+            position: static !important;
+            flex: none !important;
+            width: 100% !important;
+            max-width: 100% !important;
+        }
+    }
+
 </style>
 """
 
@@ -1301,7 +1738,12 @@ def login():
 
     with col_center:
         st.markdown(
-            f"<div class='pg-title login-card-title'>{APP_NAME}</div>",
+            f"""
+            <div class='pg-brand pg-brand-login'>
+                <div class='pg-logo-mark' aria-hidden='true'>L</div>
+                <div class='pg-title login-card-title'>{APP_NAME}</div>
+            </div>
+            """,
             unsafe_allow_html=True,
         )
         st.markdown(
@@ -2094,7 +2536,7 @@ def build_completion_chart(chart_df: pd.DataFrame, height: int = 320, compact_mo
         )
     )
 
-    chart_margin = dict(l=0, r=0, t=20, b=0) if compact_mobile else dict(l=10, r=10, t=20, b=10)
+    chart_margin = dict(l=0, r=0, t=20, b=34) if compact_mobile else dict(l=0, r=10, t=20, b=34)
 
     fig.update_layout(
         height=height,
@@ -2108,22 +2550,27 @@ def build_completion_chart(chart_df: pd.DataFrame, height: int = 320, compact_mo
         dragmode=False,
     )
 
+    # Escritorio y móvil: gráfica limpia con solo eje X visible.
+    # El rango Y se conserva en 0-100 para que la escala no cambie entre días,
+    # pero el eje Y, sus ticks y su grid se ocultan.
     fig.update_yaxes(
         range=[0, 100],
-        showgrid=True,
-        gridcolor="#e2e8f0",
-        zeroline=False,
-        tickformat=".0f",
+        visible=False,
         fixedrange=True,
-        automargin=False,
-        ticklabelposition="inside" if compact_mobile else "outside",
+        showgrid=False,
+        zeroline=False,
     )
 
     fig.update_xaxes(
         showgrid=False,
         zeroline=False,
         fixedrange=True,
-        automargin=False,
+        showticklabels=True,
+        tickmode="array",
+        tickvals=DAY_LETTERS,
+        ticktext=DAY_LETTERS,
+        ticks="",
+        automargin=True,
     )
 
     return fig
@@ -2272,10 +2719,25 @@ def render_mobile_view(
         cumplimiento_dia_sel = dia_sel_values.mean() * 100 if len(dia_sel_values) else 0
 
     # ---------- Tarjetas de resumen ----------
-    with st.container(key="mobile_summary"):
-        m1, m2 = st.columns(2)
-        m1.metric("Cumplimiento semana", f"{cumplimiento_semana:.0f}%")
-        m2.metric("Cumplimiento hoy", f"{cumplimiento_hoy:.0f}%")
+    # Se renderizan como HTML puro, sin st.container ni st.columns, para evitar
+    # que Streamlit cree un contenedor con scroll interno en móvil.
+    st.markdown(
+        f"""
+        <div class="mobile-summary-shell">
+            <div class="mobile-metrics-stack">
+                <div class="mobile-metric-card">
+                    <div class="mobile-metric-label">Cumplimiento semana</div>
+                    <div class="mobile-metric-value">{cumplimiento_semana:.0f}%</div>
+                </div>
+                <div class="mobile-metric-card">
+                    <div class="mobile-metric-label">Cumplimiento hoy</div>
+                    <div class="mobile-metric-value">{cumplimiento_hoy:.0f}%</div>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     st.write("")
 
@@ -2285,8 +2747,9 @@ def render_mobile_view(
     fig = build_completion_chart(chart_df, height=240, compact_mobile=True)
     fig.update_layout(
         autosize=True,
-        margin=dict(l=0, r=0, t=12, b=0),
+        margin=dict(l=0, r=0, t=12, b=34),
         dragmode=False,
+        yaxis_visible=False,
     )
     with st.container(key="mobile_chart"):
         st.plotly_chart(
@@ -2336,12 +2799,8 @@ def render_mobile_view(
         dia_sel_values = edited_table[selected_day_letter].dropna().astype(bool).astype(int)
         cumplimiento_dia_sel = dia_sel_values.mean() * 100 if len(dia_sel_values) else 0
 
-    st.markdown(
-        f"<div class='mv-selected-day'>{format_spanish_date(selected_date)}{today_tag} "
-        f"· Cumplimiento del día: {cumplimiento_dia_sel:.0f}%</div>",
-        unsafe_allow_html=True,
-    )
-
+    # En móvil se elimina la tarjeta azul redundante de fecha/cumplimiento.
+    # La fecha ya aparece en el encabezado y el cumplimiento ya aparece en las métricas.
     st.write("")
     st.markdown("<div class='mv-habit-label'>Hábito</div>", unsafe_allow_html=True)
 
@@ -2433,7 +2892,15 @@ def app():
 
     view_mode = resolve_view_mode()
 
-    st.markdown(f"<div class='pg-title'>{APP_NAME}</div>", unsafe_allow_html=True)
+    st.markdown(
+        f"""
+        <div class='pg-brand pg-brand-header'>
+            <div class='pg-logo-mark' aria-hidden='true'>L</div>
+            <div class='pg-title'>{APP_NAME}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     header_left, header_right = st.columns([0.72, 0.28])
 
