@@ -1,4 +1,5 @@
 import hashlib
+import html
 from datetime import date, timedelta
 from io import BytesIO
 
@@ -463,7 +464,6 @@ CUSTOM_CSS = """
     /* Filas de la vista móvil (resumen, racha/nombre/check, selector de día):
        por default Streamlit apila las columnas en pantallas angostas, lo que
        rompía el diseño en celular. Se fuerza a que siempre queden en fila. */
-    .st-key-mobile_summary [data-testid="stHorizontalBlock"],
     .st-key-mobile_tracker [data-testid="stHorizontalBlock"],
     .st-key-mobile_day_pills [data-testid="stHorizontalBlock"] {
         flex-wrap: nowrap !important;
@@ -519,6 +519,623 @@ CUSTOM_CSS = """
             padding: 0.32rem 0.05rem;
         }
     }
+
+
+    /* ---------- Mobile responsive tracker: dropdown + 3-column habit rows ---------- */
+    @media (max-width: 599px) {
+        html, body, [data-testid="stAppViewContainer"] {
+            overflow-x: hidden !important;
+            max-width: 100vw !important;
+        }
+
+        .block-container {
+            max-width: 100vw !important;
+            padding-left: 0.85rem !important;
+            padding-right: 0.85rem !important;
+        }
+
+        .st-key-mobile_summary,
+        .st-key-mobile_summary *,
+        .st-key-mobile_tracker,
+        .st-key-mobile_tracker * {
+            box-sizing: border-box;
+        }
+
+        .st-key-mobile_summary {
+            width: 100% !important;
+            max-width: 100% !important;
+            overflow-x: hidden !important;
+        }
+
+        .st-key-mobile_summary [data-testid="stHorizontalBlock"] {
+            flex-direction: column !important;
+            flex-wrap: nowrap !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            gap: 0.65rem !important;
+        }
+
+        .st-key-mobile_summary [data-testid="column"] {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            flex: 1 1 100% !important;
+        }
+
+        .st-key-mobile_summary div[data-testid="stMetric"] {
+            width: 100% !important;
+            margin-bottom: 0 !important;
+        }
+
+        .mv-day-select-label,
+        .mv-habit-label {
+            display: block;
+            margin: 0.25rem 0 0.45rem;
+            color: #475569;
+            font-size: 0.78rem;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .st-key-mobile_day_dropdown div[data-baseweb="select"] > div {
+            min-height: 46px;
+            border-radius: 14px;
+            background: #f8fafc;
+            border-color: #cbd5e1;
+        }
+
+        .st-key-mobile_day_dropdown [data-baseweb="select"] span,
+        .st-key-mobile_day_dropdown [data-baseweb="select"] div {
+            font-weight: 800;
+        }
+
+        .st-key-mobile_tracker {
+            width: 100% !important;
+            max-width: 100vw !important;
+            overflow-x: hidden !important;
+        }
+
+        .st-key-mobile_tracker div[data-testid="stExpander"] {
+            width: 100% !important;
+            margin-bottom: 0.75rem !important;
+            border-radius: 16px !important;
+            box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05) !important;
+        }
+
+        .st-key-mobile_tracker div[data-testid="stExpander"] summary {
+            min-height: 58px !important;
+            padding: 0 1rem !important;
+            font-size: 1rem !important;
+            font-weight: 750 !important;
+        }
+
+        .st-key-mobile_tracker div[data-testid="stHorizontalBlock"] {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            flex-wrap: nowrap !important;
+            align-items: center !important;
+            background: #ffffff;
+            border: 1px solid #f1f5f9;
+            border-radius: 14px;
+            padding: 0.55rem 0.35rem 0.55rem 0.25rem;
+            margin-bottom: 0.45rem;
+            gap: 0.18rem !important;
+            box-shadow: 0 4px 10px rgba(15, 23, 42, 0.03);
+        }
+
+        .st-key-mobile_tracker div[data-testid="column"] {
+            min-width: 0 !important;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
+
+        /* En móvil las columnas se compactan agresivamente:
+           streak angosto | texto flexible | checkbox angosto. */
+        .st-key-mobile_tracker div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(1) {
+            flex: 0 0 28px !important;
+            width: 28px !important;
+            max-width: 28px !important;
+        }
+
+        .st-key-mobile_tracker div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2) {
+            flex: 1 1 auto !important;
+            width: auto !important;
+            max-width: none !important;
+        }
+
+        .st-key-mobile_tracker div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(3) {
+            flex: 0 0 44px !important;
+            width: 44px !important;
+            max-width: 44px !important;
+        }
+
+        .mv-streak-cell {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 2.8rem;
+            color: #b45309;
+            font-weight: 900;
+            font-size: 0.68rem;
+            white-space: nowrap;
+        }
+
+        .mv-streak-badge {
+            min-width: 1.85rem;
+            min-height: 1.7rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0;
+            border-radius: 9px;
+            border: 1px solid #fde68a;
+            background: #fffbeb;
+            color: #b45309;
+            font-size: 0.66rem;
+            font-weight: 900;
+            white-space: nowrap;
+        }
+
+        .mv-habit-name {
+            min-height: 2.8rem;
+            display: flex;
+            align-items: center;
+            color: #0f172a;
+            font-weight: 800;
+            font-size: 0.92rem;
+            line-height: 1.2;
+            overflow-wrap: anywhere;
+            word-break: normal;
+        }
+
+        .st-key-mobile_tracker div[data-testid="stCheckbox"] {
+            min-height: 2.8rem;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+        }
+
+        .st-key-mobile_tracker div[data-testid="stCheckbox"] label {
+            min-height: 2.8rem;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            width: auto !important;
+        }
+
+        .st-key-mobile_tracker div[data-testid="stCheckbox"] label > span:first-child {
+            transform: scale(1.55);
+        }
+
+        .mv-not-applicable {
+            min-height: 2.8rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #94a3b8;
+            font-weight: 800;
+            font-size: 0.68rem;
+            text-align: center;
+            line-height: 1.05;
+        }
+    }
+
+
+    /* ---------- Mobile v4: no columns inside habit cards ---------- */
+    @media (max-width: 599px) {
+        .st-key-mobile_tracker {
+            width: 100% !important;
+            max-width: 100% !important;
+            overflow-x: hidden !important;
+        }
+
+        /* Neutraliza cualquier fila horizontal heredada dentro del tracker móvil. */
+        .st-key-mobile_tracker [data-testid="stHorizontalBlock"] {
+            display: block !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            overflow-x: hidden !important;
+        }
+
+        /* Ahora cada checkbox ES la card. Sin st.columns, no hay colapso lateral. */
+        .st-key-mobile_tracker div[data-testid="stCheckbox"] {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-height: 58px !important;
+            display: flex !important;
+            align-items: center !important;
+            background: #ffffff !important;
+            border: 1px solid #f1f5f9 !important;
+            border-radius: 14px !important;
+            padding: 0.55rem 0.55rem 0.55rem 0.65rem !important;
+            margin: 0 0 0.55rem 0 !important;
+            box-shadow: 0 4px 10px rgba(15, 23, 42, 0.03) !important;
+            box-sizing: border-box !important;
+            overflow: hidden !important;
+        }
+
+        .st-key-mobile_tracker div[data-testid="stCheckbox"] label {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-height: 44px !important;
+            display: flex !important;
+            flex-direction: row-reverse !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            gap: 0.75rem !important;
+            cursor: pointer !important;
+            box-sizing: border-box !important;
+            overflow: hidden !important;
+        }
+
+        .st-key-mobile_tracker div[data-testid="stCheckbox"] p {
+            display: block !important;
+            margin: 0 !important;
+            color: #0f172a !important;
+            font-size: 0.95rem !important;
+            font-weight: 850 !important;
+            line-height: 1.18 !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            white-space: normal !important;
+            overflow-wrap: anywhere !important;
+            word-break: normal !important;
+        }
+
+        .st-key-mobile_tracker div[data-testid="stCheckbox"] label > span:first-child {
+            flex: 0 0 34px !important;
+            width: 34px !important;
+            max-width: 34px !important;
+            transform: scale(1.45) !important;
+            margin: 0 !important;
+        }
+
+        .mv-static-habit-row {
+            width: 100%;
+            min-height: 58px;
+            display: grid;
+            grid-template-columns: 34px minmax(0, 1fr) 52px;
+            align-items: center;
+            column-gap: 0.35rem;
+            background: #ffffff;
+            border: 1px solid #f1f5f9;
+            border-radius: 14px;
+            padding: 0.55rem 0.55rem 0.55rem 0.65rem;
+            margin-bottom: 0.55rem;
+            box-shadow: 0 4px 10px rgba(15, 23, 42, 0.03);
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+
+        .mv-row-streak {
+            color: #b45309;
+            font-size: 0.72rem;
+            font-weight: 900;
+            white-space: nowrap;
+        }
+
+        .mv-row-streak-empty {
+            visibility: hidden;
+        }
+
+        .mv-static-habit-name {
+            min-width: 0;
+            color: #0f172a;
+            font-size: 0.95rem;
+            font-weight: 850;
+            line-height: 1.18;
+            overflow-wrap: anywhere;
+        }
+
+        .mv-static-na {
+            color: #94a3b8;
+            font-size: 0.64rem;
+            font-weight: 850;
+            text-align: right;
+            line-height: 1.05;
+        }
+    }
+
+
+    /* ---------- Mobile v5: aesthetic full-width habit cards ---------- */
+    @media (max-width: 599px) {
+        .st-key-mobile_tracker div[data-testid="stExpanderDetails"] {
+            padding: 0.65rem 0.65rem 0.75rem !important;
+        }
+
+        .st-key-mobile_tracker [data-testid="stVerticalBlock"],
+        .st-key-mobile_tracker [data-testid="stVerticalBlock"] > div,
+        .st-key-mobile_tracker [data-testid="stElementContainer"] {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            box-sizing: border-box !important;
+        }
+
+        .st-key-mobile_tracker [data-testid="stElementContainer"]:has(div[data-testid="stCheckbox"]) {
+            display: block !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 0 0.6rem 0 !important;
+        }
+
+        .st-key-mobile_tracker div[data-testid="stCheckbox"] {
+            display: block !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            min-height: 60px !important;
+            background: #ffffff !important;
+            border: 1px solid #eaf0f6 !important;
+            border-radius: 16px !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            box-shadow: 0 8px 18px rgba(15, 23, 42, 0.035) !important;
+            overflow: hidden !important;
+            box-sizing: border-box !important;
+        }
+
+        .st-key-mobile_tracker div[data-testid="stCheckbox"] label {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-height: 60px !important;
+            display: grid !important;
+            grid-template-columns: minmax(0, 1fr) 42px !important;
+            align-items: center !important;
+            gap: 0.55rem !important;
+            padding: 0.72rem 0.68rem 0.72rem 0.9rem !important;
+            margin: 0 !important;
+            cursor: pointer !important;
+            box-sizing: border-box !important;
+        }
+
+        .st-key-mobile_tracker div[data-testid="stCheckbox"] p {
+            display: block !important;
+            min-width: 0 !important;
+            max-width: 100% !important;
+            margin: 0 !important;
+            color: #0f172a !important;
+            font-size: 0.98rem !important;
+            font-weight: 850 !important;
+            line-height: 1.18 !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            white-space: normal !important;
+            overflow-wrap: anywhere !important;
+        }
+
+        .st-key-mobile_tracker div[data-testid="stCheckbox"] label > span:first-child {
+            justify-self: end !important;
+            align-self: center !important;
+            width: 28px !important;
+            min-width: 28px !important;
+            max-width: 28px !important;
+            height: 28px !important;
+            transform: scale(1.28) !important;
+            transform-origin: center !important;
+            margin: 0 !important;
+        }
+
+        .mv-static-habit-row {
+            width: 100% !important;
+            min-height: 60px !important;
+            grid-template-columns: minmax(0, 1fr) 58px !important;
+            column-gap: 0.55rem !important;
+            border-color: #eaf0f6 !important;
+            border-radius: 16px !important;
+            padding: 0.72rem 0.68rem 0.72rem 0.9rem !important;
+            margin-bottom: 0.6rem !important;
+            box-shadow: 0 8px 18px rgba(15, 23, 42, 0.035) !important;
+        }
+
+        .mv-static-habit-name {
+            font-size: 0.98rem !important;
+            font-weight: 850 !important;
+        }
+
+        .mv-row-streak {
+            display: inline-flex !important;
+            margin-right: 0.28rem !important;
+            color: #b45309 !important;
+            font-size: 0.82rem !important;
+            font-weight: 900 !important;
+        }
+
+        .mv-static-na {
+            justify-self: end !important;
+            color: #94a3b8 !important;
+            font-size: 0.68rem !important;
+            font-weight: 850 !important;
+        }
+    }
+
+
+    /* ---------- Mobile v6: fix checkbox label grid order ---------- */
+    @media (max-width: 599px) {
+        .st-key-mobile_tracker {
+            overflow-x: hidden !important;
+        }
+
+        .st-key-mobile_tracker div[data-testid="stExpanderDetails"] {
+            padding: 0.65rem 0.65rem 0.75rem !important;
+        }
+
+        .st-key-mobile_tracker [data-testid="stElementContainer"]:has(div[data-testid="stCheckbox"]) {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            display: block !important;
+            margin: 0 0 0.62rem 0 !important;
+            overflow: hidden !important;
+        }
+
+        .st-key-mobile_tracker div[data-testid="stCheckbox"] {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            min-height: 62px !important;
+            display: block !important;
+            background: #ffffff !important;
+            border: 1px solid #eaf0f6 !important;
+            border-radius: 16px !important;
+            box-shadow: 0 8px 18px rgba(15, 23, 42, 0.035) !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            overflow: hidden !important;
+            box-sizing: border-box !important;
+        }
+
+        .st-key-mobile_tracker div[data-testid="stCheckbox"] label {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            min-height: 62px !important;
+            display: grid !important;
+            grid-template-columns: minmax(0, 1fr) 34px !important;
+            grid-template-rows: auto !important;
+            align-items: center !important;
+            column-gap: 0.7rem !important;
+            padding: 0.72rem 0.72rem 0.72rem 0.95rem !important;
+            margin: 0 !important;
+            box-sizing: border-box !important;
+            cursor: pointer !important;
+            overflow: hidden !important;
+        }
+
+        /* Streamlit pone primero el span del checkbox y después el contenedor del texto.
+           Si no se reubican explícitamente, el texto cae en la columna angosta derecha. */
+        .st-key-mobile_tracker div[data-testid="stCheckbox"] label > span:first-child {
+            grid-column: 2 !important;
+            grid-row: 1 !important;
+            justify-self: end !important;
+            align-self: center !important;
+            width: 28px !important;
+            min-width: 28px !important;
+            max-width: 28px !important;
+            height: 28px !important;
+            transform: scale(1.28) !important;
+            transform-origin: center !important;
+            margin: 0 !important;
+        }
+
+        .st-key-mobile_tracker div[data-testid="stCheckbox"] label > div {
+            grid-column: 1 !important;
+            grid-row: 1 !important;
+            min-width: 0 !important;
+            max-width: 100% !important;
+            width: 100% !important;
+            overflow: hidden !important;
+        }
+
+        .st-key-mobile_tracker div[data-testid="stCheckbox"] label > div p,
+        .st-key-mobile_tracker div[data-testid="stCheckbox"] p {
+            display: block !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            margin: 0 !important;
+            color: #0f172a !important;
+            font-size: 0.98rem !important;
+            font-weight: 850 !important;
+            line-height: 1.18 !important;
+            white-space: normal !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            overflow-wrap: break-word !important;
+            word-break: normal !important;
+        }
+
+        .mv-static-habit-row {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            min-height: 62px !important;
+            display: grid !important;
+            grid-template-columns: minmax(0, 1fr) 58px !important;
+            align-items: center !important;
+            column-gap: 0.7rem !important;
+            background: #ffffff !important;
+            border: 1px solid #eaf0f6 !important;
+            border-radius: 16px !important;
+            padding: 0.72rem 0.72rem 0.72rem 0.95rem !important;
+            margin: 0 0 0.62rem 0 !important;
+            box-shadow: 0 8px 18px rgba(15, 23, 42, 0.035) !important;
+            overflow: hidden !important;
+            box-sizing: border-box !important;
+        }
+
+        .mv-static-habit-name {
+            min-width: 0 !important;
+            max-width: 100% !important;
+            overflow: hidden !important;
+            color: #0f172a !important;
+            font-size: 0.98rem !important;
+            font-weight: 850 !important;
+            line-height: 1.18 !important;
+            overflow-wrap: break-word !important;
+        }
+
+        .mv-row-streak {
+            display: inline-flex !important;
+            margin-right: 0.28rem !important;
+            color: #b45309 !important;
+            font-size: 0.82rem !important;
+            font-weight: 900 !important;
+            white-space: nowrap !important;
+        }
+
+        .mv-static-na {
+            justify-self: end !important;
+            color: #94a3b8 !important;
+            font-size: 0.68rem !important;
+            font-weight: 850 !important;
+            text-align: right !important;
+        }
+    }
+
+
+
+    /* ---------- Mobile v7: visual streak column + aligned habit text ---------- */
+    @media (max-width: 599px) {
+        .st-key-mobile_tracker div[data-testid="stCheckbox"] label {
+            grid-template-columns: minmax(0, 1fr) 34px !important;
+        }
+
+        .st-key-mobile_tracker div[data-testid="stCheckbox"] label > div p,
+        .st-key-mobile_tracker div[data-testid="stCheckbox"] p {
+            font-variant-numeric: tabular-nums !important;
+            letter-spacing: -0.01em !important;
+        }
+
+        .mv-static-habit-row {
+            grid-template-columns: 2.65rem minmax(0, 1fr) 58px !important;
+            column-gap: 0.45rem !important;
+        }
+
+        .mv-static-habit-name {
+            grid-column: 2 !important;
+        }
+
+        .mv-row-streak {
+            grid-column: 1 !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            width: 2.35rem !important;
+            margin-right: 0 !important;
+            color: #b45309 !important;
+            font-size: 0.78rem !important;
+            font-weight: 900 !important;
+            white-space: nowrap !important;
+        }
+
+        .mv-static-na {
+            grid-column: 3 !important;
+        }
+    }
+
 </style>
 """
 
@@ -791,6 +1408,38 @@ def compute_current_streak(
     return streak
 
 
+def build_streak_log_map(
+    username: str,
+    habits_df: pd.DataFrame,
+    base_log_map: dict,
+    week_dates: list[date],
+) -> dict:
+    """Combina el histórico guardado con lo que está marcado actualmente
+    en la sesión para calcular rachas en tiempo real.
+
+    Sin esto, las rachas solo ven lo ya guardado en Supabase. Si marcas
+    varios días de la semana y todavía no guardas, el streak puede verse
+    atrasado o directamente no aparecer.
+    """
+    merged_log_map = dict(base_log_map)
+
+    for _, habit in habits_df.iterrows():
+        habit_id = habit["id"]
+        active_days = get_habit_active_days(habit)
+
+        for i, day_letter in enumerate(DAY_LETTERS):
+            if day_letter not in active_days:
+                continue
+
+            fecha = week_dates[i].isoformat()
+            key = f"check_{username}_{habit_id}_{fecha}"
+
+            if key in st.session_state:
+                merged_log_map[(habit_id, fecha)] = int(bool(st.session_state[key]))
+
+    return merged_log_map
+
+
 def ensure_week_state(
     username: str,
     habits_df: pd.DataFrame,
@@ -1032,7 +1681,7 @@ def render_tracker(
 
                 with cols[0]:
                     if streak_value >= 3:
-                        st.markdown(f"<div class='streak-badge'>⭐ {streak_value}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div class='streak-badge'>⭐{streak_value}</div>", unsafe_allow_html=True)
                     else:
                         st.markdown("<div class='streak-badge-empty'></div>", unsafe_allow_html=True)
 
@@ -1287,13 +1936,28 @@ def render_mobile_view(
     streaks: dict,
     all_logs_df: pd.DataFrame,
 ):
+    """Vista móvil optimizada.
+
+    En celular no se renderiza la tabla de 7 días. Se usa un dropdown para
+    elegir un solo día y cada hábito se muestra como fila de 3 columnas:
+    racha | texto | checkbox. Esto elimina el desbordamiento horizontal en
+    iPhone y mantiene la misma lógica de session_state / guardado.
+    """
     if "mobile_selected_day" not in st.session_state:
         st.session_state["mobile_selected_day"] = current_day_letter
 
-    # Si el día guardado quedó en el futuro (p.ej. cambiando de semana), se
-    # corrige para no quedar "atorado" en un día no editable.
-    stuck_index = DAY_LETTERS.index(st.session_state["mobile_selected_day"])
-    if week_dates[stuck_index] > today:
+    # En móvil se permiten días pasados y el día actual. No se permiten días
+    # futuros para no adelantar datos.
+    selectable_days = [
+        day_letter
+        for i, day_letter in enumerate(DAY_LETTERS)
+        if week_dates[i] <= today
+    ]
+
+    if not selectable_days:
+        selectable_days = [current_day_letter]
+
+    if st.session_state["mobile_selected_day"] not in selectable_days:
         st.session_state["mobile_selected_day"] = current_day_letter
 
     selected_day_letter = st.session_state["mobile_selected_day"]
@@ -1319,12 +1983,12 @@ def render_mobile_view(
     # ---------- Tarjetas de resumen ----------
     with st.container(key="mobile_summary"):
         m1, m2 = st.columns(2)
-        m1.metric("Cumplimiento hoy", f"{cumplimiento_hoy:.0f}%")
-        m2.metric("Cumplimiento semana", f"{cumplimiento_semana:.0f}%")
+        m1.metric("Cumplimiento semana", f"{cumplimiento_semana:.0f}%")
+        m2.metric("Cumplimiento hoy", f"{cumplimiento_hoy:.0f}%")
 
     st.write("")
 
-    # ---------- Gráfica: siempre visible, justo debajo de las tarjetas ----------
+    # ---------- Gráfica visible debajo de tarjetas ----------
     st.markdown("<div class='mv-section-title'>Cumplimiento por día</div>", unsafe_allow_html=True)
     chart_df = calculate_day_completion(edited_table)
     fig = build_completion_chart(chart_df, height=240)
@@ -1332,32 +1996,39 @@ def render_mobile_view(
 
     st.write("")
 
-    # ---------- Selector de día ----------
-    st.markdown("<div class='mv-section-title'>Selecciona un día</div>", unsafe_allow_html=True)
+    # ---------- Dropdown de día ----------
+    st.markdown("<div class='mv-day-select-label'>Selecciona un día</div>", unsafe_allow_html=True)
 
-    day_cols_container = st.container(key="mobile_day_pills")
+    def day_option_label(day_letter: str) -> str:
+        day_date = week_dates[DAY_LETTERS.index(day_letter)]
+        today_tag = " · Hoy" if day_letter == current_day_letter else ""
+        return f"{DAY_NAMES_SHORT[day_letter]} · {day_date.day}/{day_date.month}{today_tag}"
 
-    with day_cols_container:
-        day_cols = st.columns(7, gap="small")
+    with st.container(key="mobile_day_dropdown"):
+        selected_day_letter = st.selectbox(
+            "Selecciona un día",
+            options=selectable_days,
+            index=selectable_days.index(st.session_state["mobile_selected_day"]),
+            format_func=day_option_label,
+            label_visibility="collapsed",
+            key="mobile_day_selectbox",
+        )
 
-        for i, day_letter in enumerate(DAY_LETTERS):
-            is_future = week_dates[i] > today
-            is_selected = day_letter == selected_day_letter
+    if selected_day_letter != st.session_state["mobile_selected_day"]:
+        st.session_state["mobile_selected_day"] = selected_day_letter
+        st.rerun()
 
-            with day_cols[i]:
-                clicked = st.button(
-                    day_letter,
-                    key=f"daypill_{day_letter}",
-                    use_container_width=True,
-                    type="primary" if is_selected else "secondary",
-                    disabled=is_future,
-                )
-
-                if clicked:
-                    st.session_state["mobile_selected_day"] = day_letter
-                    st.rerun()
-
+    selected_index = DAY_LETTERS.index(selected_day_letter)
+    selected_date = week_dates[selected_index]
     today_tag = " · Hoy" if selected_day_letter == current_day_letter else ""
+
+    # Recalcular cumplimiento del día seleccionado después del selectbox.
+    if edited_table.empty:
+        cumplimiento_dia_sel = 0
+    else:
+        dia_sel_values = edited_table[selected_day_letter].dropna().astype(bool).astype(int)
+        cumplimiento_dia_sel = dia_sel_values.mean() * 100 if len(dia_sel_values) else 0
+
     st.markdown(
         f"<div class='mv-selected-day'>{format_spanish_date(selected_date)}{today_tag} "
         f"· Cumplimiento del día: {cumplimiento_dia_sel:.0f}%</div>",
@@ -1365,12 +2036,9 @@ def render_mobile_view(
     )
 
     st.write("")
+    st.markdown("<div class='mv-habit-label'>Hábito</div>", unsafe_allow_html=True)
 
-    # ---------- Lista de hábitos del día seleccionado ----------
-    # Cada fila: racha | nombre del hábito | checkbox. La racha va primero,
-    # en una columna angosta fija, para que el nombre siempre arranque en la
-    # misma posición tenga o no tenga racha ese hábito. Cada apartado se
-    # puede colapsar (útil para ocultar "Mañana" si ya es de tarde, etc.).
+    # ---------- Lista móvil: apartado colapsable + racha | hábito | checkbox ----------
     with st.container(key="mobile_tracker"):
         for category in CATEGORIES:
             category_habits = habits_df[habits_df["category"] == category]
@@ -1381,37 +2049,51 @@ def render_mobile_view(
             with st.expander(category, expanded=True, key=f"mobile_cat_{category}"):
                 for _, habit in category_habits.iterrows():
                     habit_id = habit["id"]
-                    habit_name = habit["habit_name"]
+                    habit_name = str(habit["habit_name"])
                     active_days = get_habit_active_days(habit)
                     streak_value = streaks.get(habit_id, 0)
 
-                    streak_col, name_col, check_col = st.columns([0.34, 1, 0.34], gap="small")
+                    # En móvil NO usamos st.columns para cada hábito.
+                    # Streamlit apila/rompe columnas en anchos tipo iPhone y eso
+                    # genera desbordamiento horizontal. Cada hábito se renderiza
+                    # como una sola fila; el CSS convierte el checkbox nativo en
+                    # una card con layout: streak | texto | checkbox.
+                    # Prefijo visual de racha. Cuando no hay racha, se usan
+                    # espacios Unicode invisibles para reservar el mismo ancho
+                    # y que todos los nombres arranquen alineados en móvil.
+                    label_prefix = f"⭐{streak_value}  " if streak_value >= 3 else "⠀⠀⠀⠀"
+                    visible_label = f"{label_prefix}{habit_name}"
 
-                    with streak_col:
-                        if streak_value >= 3:
-                            st.markdown(f"<div class='mv-streak-cell'>⭐ {streak_value}</div>", unsafe_allow_html=True)
-                        else:
-                            st.markdown("<div class='mv-streak-cell'></div>", unsafe_allow_html=True)
-
-                    with name_col:
-                        st.markdown(f"<div class='mv-habit-name'>{habit_name}</div>", unsafe_allow_html=True)
-
-                    with check_col:
-                        if selected_day_letter not in active_days:
-                            st.markdown("<div class='mv-not-applicable'>No aplica</div>", unsafe_allow_html=True)
-                        else:
-                            fecha = selected_date.isoformat()
-                            key = f"check_{username}_{habit_id}_{fecha}"
-                            st.checkbox(
-                                label=f"{habit_name} {selected_day_letter}",
-                                key=key,
-                                label_visibility="collapsed",
-                            )
+                    if selected_day_letter not in active_days:
+                        streak_html = (
+                            f"<span class='mv-row-streak'>⭐{streak_value}</span>"
+                            if streak_value >= 3 else
+                            "<span class='mv-row-streak mv-row-streak-empty'></span>"
+                        )
+                        st.markdown(
+                            "<div class='mv-static-habit-row'>"
+                            f"{streak_html}"
+                            f"<span class='mv-static-habit-name'>{html.escape(habit_name)}</span>"
+                            "<span class='mv-static-na'>No aplica</span>"
+                            "</div>",
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        fecha = selected_date.isoformat()
+                        key = f"check_{username}_{habit_id}_{fecha}"
+                        st.checkbox(
+                            label=visible_label,
+                            key=key,
+                            label_visibility="visible",
+                        )
 
     st.write("")
 
     if st.button("Guardar semana", use_container_width=True, type="primary", key="mobile_save_btn"):
-        save_week(username, edited_table, week_dates)
+        # Importante: reconstruir después de los widgets para guardar el estado
+        # más reciente del checkbox tocado en móvil.
+        latest_table = build_week_table(username, habits_df, week_dates)
+        save_week(username, latest_table, week_dates)
         st.success("Semana guardada correctamente. Si ya existía, se actualizó sin duplicados.")
         st.rerun()
 
@@ -1427,7 +2109,6 @@ def render_mobile_view(
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
         )
-
 
 def app():
     username = st.session_state["username"]
@@ -1484,13 +2165,19 @@ def app():
     # de descarga de Excel, evitando pedirlo dos veces.
     all_logs_df = load_all_logs(username)
     all_log_map = get_log_map(all_logs_df)
+    streak_log_map = build_streak_log_map(
+        username=username,
+        habits_df=habits_df,
+        base_log_map=all_log_map,
+        week_dates=week_dates,
+    )
 
     streaks = {
         habit["id"]: compute_current_streak(
             habit_id=habit["id"],
             active_days=get_habit_active_days(habit),
             today=today,
-            log_map=all_log_map,
+            log_map=streak_log_map,
         )
         for _, habit in habits_df.iterrows()
     }
