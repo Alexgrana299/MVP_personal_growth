@@ -243,21 +243,27 @@ CUSTOM_CSS = """
         justify-content: center;
         align-items: center;
         width: 100%;
+        cursor: pointer;
     }
 
     div[data-testid="stCheckbox"] p {
         display: none;
     }
 
-    div[data-testid="stCheckbox"] input[type="checkbox"] {
-        width: 1.15rem;
-        height: 1.15rem;
-        accent-color: #06b6d4;
-        cursor: pointer;
+    /* Streamlit dibuja el checkbox con el <input> nativo invisible superpuesto
+       a un recuadro propio (SVG/CSS). Si se le cambia el tamaño solo al
+       input, ambos quedan desalineados y se ven como dos casillas encimadas.
+       Por eso se escala la etiqueta completa (label), que contiene ambos
+       elementos, para que crezcan juntos y en la misma proporción. */
+    div[data-testid="stCheckbox"] label > span:first-child {
+        transform: scale(1.05);
     }
 
-    div[data-testid="stCheckbox"] input[type="checkbox"]:disabled {
+    div[data-testid="stCheckbox"]:has(input:disabled) {
         opacity: 0.35;
+    }
+
+    div[data-testid="stCheckbox"]:has(input:disabled) label {
         cursor: not-allowed;
     }
 
@@ -275,6 +281,30 @@ CUSTOM_CSS = """
     .stButton button {
         border-radius: 14px;
         font-weight: 800;
+    }
+
+    /* ---------- Apartados colapsables (Mañana / Tarde / Noche, etc.) ---------- */
+    div[data-testid="stExpander"] {
+        border: 1px solid #e2e8f0 !important;
+        border-radius: 14px !important;
+        margin-bottom: 0.6rem;
+        overflow: hidden;
+    }
+
+    div[data-testid="stExpander"] summary {
+        background: #f0fdfa;
+        color: #0f172a;
+        font-weight: 800;
+        font-size: 0.95rem;
+        padding: 0.6rem 1rem !important;
+    }
+
+    div[data-testid="stExpander"] summary:hover {
+        background: #ecfeff;
+    }
+
+    div[data-testid="stExpander"] div[data-testid="stExpanderDetails"] {
+        padding-top: 0.3rem;
     }
 
     button[kind="primary"] {
@@ -298,6 +328,23 @@ CUSTOM_CSS = """
     }
 
     /* ---------- Vista móvil (celular) ---------- */
+    .st-key-view_switch_wrap {
+        display: flex;
+        justify-content: flex-end;
+        margin-bottom: 0.4rem;
+    }
+
+    .st-key-view_switch_wrap .stButton button {
+        background: transparent !important;
+        border: 1px solid #e2e8f0 !important;
+        color: #475569 !important;
+        font-size: 0.78rem !important;
+        font-weight: 700 !important;
+        height: 2.1rem !important;
+        padding: 0 0.9rem !important;
+        box-shadow: none !important;
+    }
+
     .mv-section-title {
         font-weight: 900;
         color: #475569;
@@ -354,10 +401,9 @@ CUSTOM_CSS = """
         min-height: 2rem;
     }
 
-    /* Checkbox grande y fácil de tocar con el pulgar. */
-    .st-key-mobile_tracker div[data-testid="stCheckbox"] input[type="checkbox"] {
-        width: 1.75rem;
-        height: 1.75rem;
+    /* Checkbox grande y fácil de tocar con el pulgar (se escala completo). */
+    .st-key-mobile_tracker div[data-testid="stCheckbox"] label > span:first-child {
+        transform: scale(1.5);
     }
 
     /* Insignia de racha (⭐) en su propia columna angosta, en celular. */
@@ -400,17 +446,6 @@ CUSTOM_CSS = """
         font-size: 0.85rem;
     }
 
-    /* Barra de guardar fija en la parte inferior de la pantalla, siempre
-       visible mientras se hace scroll por la lista de hábitos. */
-    .st-key-mobile_save_bar {
-        position: sticky;
-        bottom: 0;
-        background: #ffffff;
-        padding: 0.6rem 0;
-        border-top: 1px solid #e2e8f0;
-        z-index: 20;
-    }
-
     /* ---------- Responsive behaviour ---------- */
 
     /* Tracker rows (habit name + 7 day checkboxes) never wrap, on any device.
@@ -423,6 +458,24 @@ CUSTOM_CSS = """
 
     .st-key-tracker_scroll {
         overflow-x: auto !important;
+    }
+
+    /* Filas de la vista móvil (resumen, racha/nombre/check, selector de día):
+       por default Streamlit apila las columnas en pantallas angostas, lo que
+       rompía el diseño en celular. Se fuerza a que siempre queden en fila. */
+    .st-key-mobile_summary [data-testid="stHorizontalBlock"],
+    .st-key-mobile_tracker [data-testid="stHorizontalBlock"],
+    .st-key-mobile_day_pills [data-testid="stHorizontalBlock"] {
+        flex-wrap: nowrap !important;
+        min-width: 100%;
+    }
+
+    .st-key-mobile_tracker {
+        overflow-x: auto !important;
+    }
+
+    .st-key-mobile_day_pills [data-testid="column"] {
+        min-width: 0;
     }
 
     /* From 600px up (tablets and desktop) keep the chart/metrics column and the
@@ -561,6 +614,12 @@ def load_habits(username: str) -> pd.DataFrame:
         return df
 
     df["category"] = pd.Categorical(df["category"], categories=CATEGORIES, ordered=True)
+
+    # sort_order puede venir como texto desde Supabase; se fuerza a numérico
+    # para que el orden de inserción (1, 2, 3, ...) nunca se interprete como
+    # texto (donde "10" quedaría antes que "2").
+    df["sort_order"] = pd.to_numeric(df["sort_order"], errors="coerce").fillna(0)
+
     # Solo se ordena por categoría y por sort_order (orden de creación).
     # No se agrega habit_name como criterio para no reordenar alfabéticamente.
     df = df.sort_values(["category", "sort_order"], kind="stable").reset_index(drop=True)
@@ -628,15 +687,24 @@ def add_habit(username: str, category: str, habit_name: str, active_days: list[s
         .select("sort_order")
         .eq("user_name", username)
         .eq("category", category)
-        .order("sort_order", desc=True)
-        .limit(1)
         .execute()
     )
 
-    if order_response.data:
-        next_order = int(order_response.data[0].get("sort_order") or 0) + 1
-    else:
-        next_order = 1
+    # El máximo se calcula en Python (no con ORDER BY ... DESC en la base de
+    # datos) porque si sort_order llegara a estar guardado como texto, un
+    # ORDER BY descendente lo ordenaría alfabéticamente ("9" > "10") y se
+    # asignarían números repetidos o fuera de secuencia.
+    existing_orders = []
+    for row in order_response.data:
+        raw_value = row.get("sort_order")
+        if raw_value is None:
+            continue
+        try:
+            existing_orders.append(int(raw_value))
+        except (TypeError, ValueError):
+            continue
+
+    next_order = (max(existing_orders) + 1) if existing_orders else 1
 
     supabase.table("habits").insert({
         "user_name": username,
@@ -783,9 +851,14 @@ def build_week_table(
 
 
 def resolve_view_mode() -> str:
-    """Devuelve 'mobile' o 'desktop' de forma 100% automática, detectando el
-    tipo de dispositivo a partir del User-Agent del navegador: los celulares
-    reciben la vista optimizada y tablets/PC conservan la vista de escritorio."""
+    """Devuelve 'mobile' o 'desktop'. Por default se detecta solo el tipo de
+    dispositivo a partir del User-Agent del navegador (celulares → vista
+    optimizada, tablets/PC → vista de escritorio). El botón de "cambiar
+    vista" en la parte superior permite forzar la que se prefiera, por si la
+    detección automática falla en algún navegador."""
+    if "view_mode_override" in st.session_state:
+        return st.session_state["view_mode_override"]
+
     try:
         user_agent = (st.context.headers.get("User-Agent") or "").lower()
     except Exception:
@@ -942,69 +1015,65 @@ def render_tracker(
         if category_habits.empty:
             continue
 
-        st.markdown(
-            f"<div class='tracker-section'>{category}</div>",
-            unsafe_allow_html=True,
-        )
+        with st.expander(category, expanded=True, key=f"desktop_cat_{category}"):
+            for _, habit in category_habits.iterrows():
+                habit_id = habit["id"]
+                habit_name = habit["habit_name"]
+                active_days = get_habit_active_days(habit)
+                streak_value = streaks.get(habit_id, 0)
 
-        for _, habit in category_habits.iterrows():
-            habit_id = habit["id"]
-            habit_name = habit["habit_name"]
-            active_days = get_habit_active_days(habit)
-            streak_value = streaks.get(habit_id, 0)
+                row = {
+                    "id": habit_id,
+                    "Apartado": category,
+                    "Hábito": habit_name,
+                }
 
-            row = {
-                "id": habit_id,
-                "Apartado": category,
-                "Hábito": habit_name,
-            }
+                cols = st.columns(TRACKER_COL_WEIGHTS, gap="small")
 
-            cols = st.columns(TRACKER_COL_WEIGHTS, gap="small")
+                with cols[0]:
+                    if streak_value >= 3:
+                        st.markdown(f"<div class='streak-badge'>⭐ {streak_value}</div>", unsafe_allow_html=True)
+                    else:
+                        st.markdown("<div class='streak-badge-empty'></div>", unsafe_allow_html=True)
 
-            with cols[0]:
-                if streak_value >= 3:
-                    st.markdown(f"<div class='streak-badge'>⭐ {streak_value}</div>", unsafe_allow_html=True)
-                else:
-                    st.markdown("<div class='streak-badge-empty'></div>", unsafe_allow_html=True)
-
-            with cols[1]:
-                st.markdown(
-                    f"<div class='habit-name'>{habit_name}</div>",
-                    unsafe_allow_html=True,
-                )
-
-            for i, day_letter in enumerate(DAY_LETTERS):
-                fecha_date = week_dates[i]
-                fecha = fecha_date.isoformat()
-
-                # Día en el que el hábito no aplica: se bloquea la celda y no
-                # se cuenta en el porcentaje de cumplimiento.
-                if day_letter not in active_days:
-                    with cols[i + 2]:
-                        st.markdown("<div class='cell-excluded'>–</div>", unsafe_allow_html=True)
-                    row[day_letter] = None
-                    continue
-
-                key = f"check_{username}_{habit_id}_{fecha}"
-                default_value = bool(log_map.get((habit_id, fecha), 0))
-
-                if key not in st.session_state:
-                    st.session_state[key] = default_value
-
-                # No se permite marcar días futuros, para no adelantar datos.
-                is_future = fecha_date > today
-
-                with cols[i + 2]:
-                    st.checkbox(
-                        label=f"{habit_name} {day_letter}",
-                        key=key,
-                        label_visibility="collapsed",
-                        disabled=is_future,
+                with cols[1]:
+                    st.markdown(
+                        f"<div class='habit-name'>{habit_name}</div>",
+                        unsafe_allow_html=True,
                     )
 
-                row[day_letter] = bool(st.session_state[key])
+                for i, day_letter in enumerate(DAY_LETTERS):
+                    fecha_date = week_dates[i]
+                    fecha = fecha_date.isoformat()
 
-            records.append(row)
+                    # Día en el que el hábito no aplica: se bloquea la celda y no
+                    # se cuenta en el porcentaje de cumplimiento.
+                    if day_letter not in active_days:
+                        with cols[i + 2]:
+                            st.markdown("<div class='cell-excluded'>–</div>", unsafe_allow_html=True)
+                        row[day_letter] = None
+                        continue
+
+                    key = f"check_{username}_{habit_id}_{fecha}"
+                    default_value = bool(log_map.get((habit_id, fecha), 0))
+
+                    if key not in st.session_state:
+                        st.session_state[key] = default_value
+
+                    # No se permite marcar días futuros, para no adelantar datos.
+                    is_future = fecha_date > today
+
+                    with cols[i + 2]:
+                        st.checkbox(
+                            label=f"{habit_name} {day_letter}",
+                            key=key,
+                            label_visibility="collapsed",
+                            disabled=is_future,
+                        )
+
+                    row[day_letter] = bool(st.session_state[key])
+
+                records.append(row)
 
     if not records:
         return pd.DataFrame(columns=["id", "Apartado", "Hábito"] + DAY_LETTERS).set_index("id")
@@ -1248,9 +1317,10 @@ def render_mobile_view(
         cumplimiento_dia_sel = dia_sel_values.mean() * 100 if len(dia_sel_values) else 0
 
     # ---------- Tarjetas de resumen ----------
-    m1, m2 = st.columns(2)
-    m1.metric("Cumplimiento hoy", f"{cumplimiento_hoy:.0f}%")
-    m2.metric("Cumplimiento semana", f"{cumplimiento_semana:.0f}%")
+    with st.container(key="mobile_summary"):
+        m1, m2 = st.columns(2)
+        m1.metric("Cumplimiento hoy", f"{cumplimiento_hoy:.0f}%")
+        m2.metric("Cumplimiento semana", f"{cumplimiento_semana:.0f}%")
 
     st.write("")
 
@@ -1299,7 +1369,8 @@ def render_mobile_view(
     # ---------- Lista de hábitos del día seleccionado ----------
     # Cada fila: racha | nombre del hábito | checkbox. La racha va primero,
     # en una columna angosta fija, para que el nombre siempre arranque en la
-    # misma posición tenga o no tenga racha ese hábito.
+    # misma posición tenga o no tenga racha ese hábito. Cada apartado se
+    # puede colapsar (útil para ocultar "Mañana" si ya es de tarde, etc.).
     with st.container(key="mobile_tracker"):
         for category in CATEGORIES:
             category_habits = habits_df[habits_df["category"] == category]
@@ -1307,48 +1378,42 @@ def render_mobile_view(
             if category_habits.empty:
                 continue
 
-            st.markdown(
-                f"<div class='tracker-section'>{category}</div>",
-                unsafe_allow_html=True,
-            )
+            with st.expander(category, expanded=True, key=f"mobile_cat_{category}"):
+                for _, habit in category_habits.iterrows():
+                    habit_id = habit["id"]
+                    habit_name = habit["habit_name"]
+                    active_days = get_habit_active_days(habit)
+                    streak_value = streaks.get(habit_id, 0)
 
-            for _, habit in category_habits.iterrows():
-                habit_id = habit["id"]
-                habit_name = habit["habit_name"]
-                active_days = get_habit_active_days(habit)
-                streak_value = streaks.get(habit_id, 0)
+                    streak_col, name_col, check_col = st.columns([0.34, 1, 0.34], gap="small")
 
-                streak_col, name_col, check_col = st.columns([0.34, 1, 0.34], gap="small")
+                    with streak_col:
+                        if streak_value >= 3:
+                            st.markdown(f"<div class='mv-streak-cell'>⭐ {streak_value}</div>", unsafe_allow_html=True)
+                        else:
+                            st.markdown("<div class='mv-streak-cell'></div>", unsafe_allow_html=True)
 
-                with streak_col:
-                    if streak_value >= 3:
-                        st.markdown(f"<div class='mv-streak-cell'>⭐ {streak_value}</div>", unsafe_allow_html=True)
-                    else:
-                        st.markdown("<div class='mv-streak-cell'></div>", unsafe_allow_html=True)
+                    with name_col:
+                        st.markdown(f"<div class='mv-habit-name'>{habit_name}</div>", unsafe_allow_html=True)
 
-                with name_col:
-                    st.markdown(f"<div class='mv-habit-name'>{habit_name}</div>", unsafe_allow_html=True)
-
-                with check_col:
-                    if selected_day_letter not in active_days:
-                        st.markdown("<div class='mv-not-applicable'>No aplica</div>", unsafe_allow_html=True)
-                    else:
-                        fecha = selected_date.isoformat()
-                        key = f"check_{username}_{habit_id}_{fecha}"
-                        st.checkbox(
-                            label=f"{habit_name} {selected_day_letter}",
-                            key=key,
-                            label_visibility="collapsed",
-                        )
+                    with check_col:
+                        if selected_day_letter not in active_days:
+                            st.markdown("<div class='mv-not-applicable'>No aplica</div>", unsafe_allow_html=True)
+                        else:
+                            fecha = selected_date.isoformat()
+                            key = f"check_{username}_{habit_id}_{fecha}"
+                            st.checkbox(
+                                label=f"{habit_name} {selected_day_letter}",
+                                key=key,
+                                label_visibility="collapsed",
+                            )
 
     st.write("")
 
-    # Barra de guardar fija abajo, siempre visible mientras se hace scroll.
-    with st.container(key="mobile_save_bar"):
-        if st.button("Guardar semana", use_container_width=True, type="primary", key="mobile_save_btn"):
-            save_week(username, edited_table, week_dates)
-            st.success("Semana guardada correctamente. Si ya existía, se actualizó sin duplicados.")
-            st.rerun()
+    if st.button("Guardar semana", use_container_width=True, type="primary", key="mobile_save_btn"):
+        save_week(username, edited_table, week_dates)
+        st.success("Semana guardada correctamente. Si ya existía, se actualizó sin duplicados.")
+        st.rerun()
 
     st.write("")
 
@@ -1392,6 +1457,16 @@ def app():
             f"<div class='pg-user'>Hola {display_name}</div>",
             unsafe_allow_html=True,
         )
+
+    with st.container(key="view_switch_wrap"):
+        switch_label = (
+            "🖥️ Ver como escritorio" if view_mode == "mobile"
+            else "📱 Ver como celular"
+        )
+
+        if st.button(switch_label, key="view_switch_btn"):
+            st.session_state["view_mode_override"] = "desktop" if view_mode == "mobile" else "mobile"
+            st.rerun()
 
     render_habit_manager(username)
 
