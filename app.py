@@ -1189,6 +1189,90 @@ CUSTOM_CSS = """
         }
     }
 
+
+    /* ---------- Previous week summary card ---------- */
+    .week-summary-card {
+        background: linear-gradient(180deg, #ffffff 0%, #f8feff 100%);
+        border: 1px solid #cffafe;
+        border-radius: 20px;
+        padding: 1rem 1.1rem;
+        margin: 0.25rem 0 1rem 0;
+        box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
+    }
+
+    .week-summary-kicker {
+        color: #475569;
+        font-size: 0.78rem;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-bottom: 0.35rem;
+    }
+
+    .week-summary-main {
+        display: flex;
+        align-items: baseline;
+        gap: 0.65rem;
+        margin-bottom: 0.35rem;
+    }
+
+    .week-summary-percent {
+        color: #0f172a;
+        font-size: 2.15rem;
+        font-weight: 950;
+        letter-spacing: -0.04em;
+        line-height: 1;
+    }
+
+    .week-summary-sub {
+        color: #64748b;
+        font-size: 0.92rem;
+        font-weight: 750;
+    }
+
+    .week-summary-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.5rem;
+        margin-top: 0.75rem;
+    }
+
+    .week-summary-chip {
+        background: #ecfeff;
+        border: 1px solid #cffafe;
+        border-radius: 14px;
+        padding: 0.55rem 0.65rem;
+        color: #0f172a;
+        font-size: 0.82rem;
+        font-weight: 800;
+        min-width: 0;
+    }
+
+    .week-summary-chip span {
+        display: block;
+        color: #64748b;
+        font-size: 0.68rem;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        margin-bottom: 0.15rem;
+    }
+
+    @media (max-width: 599px) {
+        .week-summary-card {
+            padding: 0.95rem 0.9rem;
+            border-radius: 18px;
+        }
+
+        .week-summary-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .week-summary-percent {
+            font-size: 2rem;
+        }
+    }
+
 </style>
 """
 
@@ -1290,9 +1374,22 @@ def load_habits(username: str) -> pd.DataFrame:
     # texto (donde "10" quedaría antes que "2").
     df["sort_order"] = pd.to_numeric(df["sort_order"], errors="coerce").fillna(0)
 
-    # Solo se ordena por categoría y por sort_order (orden de creación).
-    # No se agrega habit_name como criterio para no reordenar alfabéticamente.
-    df = df.sort_values(["category", "sort_order"], kind="stable").reset_index(drop=True)
+    # Orden real: categoría + sort_order.
+    # Si por datos antiguos hay sort_order duplicado o nulo, se usa created_at/id
+    # solo como desempate estable. Nunca se ordena alfabéticamente por hábito.
+    if "created_at" in df.columns:
+        df["_created_sort"] = pd.to_datetime(df["created_at"], errors="coerce")
+    else:
+        df["_created_sort"] = pd.NaT
+
+    if "id" not in df.columns:
+        df["id"] = ""
+
+    df = (
+        df.sort_values(["category", "sort_order", "_created_sort", "id"], kind="stable")
+        .drop(columns=["_created_sort"], errors="ignore")
+        .reset_index(drop=True)
+    )
 
     return df
 
@@ -1329,27 +1426,13 @@ def load_all_logs(username: str) -> pd.DataFrame:
     return pd.DataFrame(response.data)
 
 
-def add_habit(username: str, category: str, habit_name: str, active_days: list[str] | None = None):
+def get_next_sort_order(username: str, category: str) -> int:
+    """Siguiente posición al final del apartado.
+
+    Se calcula en Python para evitar errores si sort_order quedó guardado
+    como texto o si hay datos antiguos con valores raros.
+    """
     supabase = get_supabase_client()
-    habit_name = habit_name.strip()
-    active_days = active_days or list(DAY_LETTERS)
-
-    existing = (
-        supabase
-        .table("habits")
-        .select("id")
-        .eq("user_name", username)
-        .eq("category", category)
-        .eq("habit_name", habit_name)
-        .execute()
-    )
-
-    if existing.data:
-        supabase.table("habits").update({
-            "active": True,
-            "active_days": active_days,
-        }).eq("id", existing.data[0]["id"]).execute()
-        return
 
     order_response = (
         supabase
@@ -1360,10 +1443,6 @@ def add_habit(username: str, category: str, habit_name: str, active_days: list[s
         .execute()
     )
 
-    # El máximo se calcula en Python (no con ORDER BY ... DESC en la base de
-    # datos) porque si sort_order llegara a estar guardado como texto, un
-    # ORDER BY descendente lo ordenaría alfabéticamente ("9" > "10") y se
-    # asignarían números repetidos o fuera de secuencia.
     existing_orders = []
     for row in order_response.data:
         raw_value = row.get("sort_order")
@@ -1374,7 +1453,38 @@ def add_habit(username: str, category: str, habit_name: str, active_days: list[s
         except (TypeError, ValueError):
             continue
 
-    next_order = (max(existing_orders) + 1) if existing_orders else 1
+    return (max(existing_orders) + 1) if existing_orders else 1
+
+
+def add_habit(username: str, category: str, habit_name: str, active_days: list[str] | None = None):
+    supabase = get_supabase_client()
+    habit_name = habit_name.strip()
+    active_days = active_days or list(DAY_LETTERS)
+
+    existing = (
+        supabase
+        .table("habits")
+        .select("id, active")
+        .eq("user_name", username)
+        .eq("category", category)
+        .eq("habit_name", habit_name)
+        .execute()
+    )
+
+    next_order = get_next_sort_order(username, category)
+
+    if existing.data:
+        update_payload = {
+            "active": True,
+            "active_days": active_days,
+            "sort_order": next_order,
+        }
+
+        # Si el hábito ya existía (activo o eliminado), al volverlo a agregar
+        # desde el formulario se manda al final del apartado. Esto corrige casos
+        # como "Beber agua" reapareciendo en medio por conservar un sort_order viejo.
+        supabase.table("habits").update(update_payload).eq("id", existing.data[0]["id"]).execute()
+        return
 
     supabase.table("habits").insert({
         "user_name": username,
@@ -1855,6 +1965,117 @@ def create_excel_download(df: pd.DataFrame) -> BytesIO:
     return output
 
 
+def build_previous_week_summary(
+    habits_df: pd.DataFrame,
+    all_logs_df: pd.DataFrame,
+    previous_week_start: date,
+    previous_week_end: date,
+    today: date,
+) -> dict | None:
+    """Resumen ligero de la semana anterior.
+
+    Usa habit_logs como fuente porque ahí están los intentos aplicables ya
+    guardados. Si no hay registros, no muestra tarjeta.
+    """
+    if all_logs_df.empty:
+        return None
+
+    df = all_logs_df.copy()
+    if "fecha" not in df.columns or "valor" not in df.columns or "habit_id" not in df.columns:
+        return None
+
+    df["fecha_dt"] = pd.to_datetime(df["fecha"], errors="coerce").dt.date
+    prev_df = df[
+        (df["fecha_dt"] >= previous_week_start)
+        & (df["fecha_dt"] <= previous_week_end)
+    ].copy()
+
+    if prev_df.empty:
+        return None
+
+    prev_df["valor_int"] = prev_df["valor"].astype(bool).astype(int)
+    completed = int(prev_df["valor_int"].sum())
+    total = int(len(prev_df))
+    percentage = (completed / total * 100) if total else 0
+
+    habit_names = habits_df.set_index("id")["habit_name"].to_dict() if not habits_df.empty else {}
+
+    grouped = (
+        prev_df.groupby("habit_id", dropna=False)
+        .agg(done=("valor_int", "sum"), total=("valor_int", "count"))
+        .reset_index()
+    )
+    grouped["rate"] = grouped["done"] / grouped["total"].replace(0, pd.NA)
+
+    if "habit_name" in prev_df.columns:
+        historical_names = (
+            prev_df.dropna(subset=["habit_id"])
+            .groupby("habit_id")["habit_name"]
+            .first()
+            .to_dict()
+        )
+    else:
+        historical_names = {}
+
+    grouped["habit_name"] = grouped["habit_id"].map(habit_names)
+    grouped["habit_name"] = grouped["habit_name"].fillna(grouped["habit_id"].map(historical_names))
+    grouped["habit_name"] = grouped["habit_name"].fillna("Hábito")
+
+    best_habit = "Sin datos"
+    if not grouped.empty:
+        best_row = grouped.sort_values(["rate", "done", "total"], ascending=[False, False, False]).iloc[0]
+        best_habit = f"{best_row['habit_name']} · {int(best_row['done'])}/{int(best_row['total'])}"
+
+    weak_habits = []
+    if not grouped.empty:
+        weak_df = grouped[grouped["total"] > 0].sort_values(["rate", "done"], ascending=[True, True]).head(2)
+        weak_habits = [str(name) for name in weak_df["habit_name"].tolist() if pd.notna(name)]
+
+    log_map = get_log_map(all_logs_df)
+    best_streak_name = "Sin datos"
+    best_streak_value = 0
+    for _, habit in habits_df.iterrows():
+        streak_value = compute_current_streak(
+            habit_id=habit["id"],
+            active_days=get_habit_active_days(habit),
+            today=previous_week_end,
+            log_map=log_map,
+        )
+        if streak_value > best_streak_value:
+            best_streak_value = streak_value
+            best_streak_name = str(habit["habit_name"])
+
+    return {
+        "percentage": percentage,
+        "completed": completed,
+        "total": total,
+        "best_habit": best_habit,
+        "best_streak": f"{best_streak_name} · ⭐{best_streak_value}" if best_streak_value else "Sin racha",
+        "weak_habits": ", ".join(weak_habits) if weak_habits else "Sin datos",
+    }
+
+
+def render_previous_week_summary(summary: dict | None) -> None:
+    if not summary:
+        return
+
+    st.markdown(
+        "<div class='week-summary-card'>"
+        "<div class='week-summary-kicker'>Resumen semana anterior</div>"
+        "<div class='week-summary-main'>"
+        f"<div class='week-summary-percent'>{summary['percentage']:.0f}%</div>"
+        f"<div class='week-summary-sub'>Cerraste {summary['completed']} de {summary['total']} hábitos</div>"
+        "</div>"
+        "<div class='week-summary-grid'>"
+        f"<div class='week-summary-chip'><span>Mejor hábito</span>{html.escape(str(summary['best_habit']))}</div>"
+        f"<div class='week-summary-chip'><span>Mejor racha</span>{html.escape(str(summary['best_streak']))}</div>"
+        f"<div class='week-summary-chip'><span>A mejorar</span>{html.escape(str(summary['weak_habits']))}</div>"
+        "</div>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+
 def build_completion_chart(chart_df: pd.DataFrame, height: int = 320, compact_mobile: bool = False) -> go.Figure:
     fig = go.Figure()
 
@@ -1864,7 +2085,7 @@ def build_completion_chart(chart_df: pd.DataFrame, height: int = 320, compact_mo
             y=chart_df["Cumplimiento"],
             mode="lines+markers+text",
             fill="tozeroy",
-            line=dict(color="#06b6d4", width=4),
+            line=dict(color="#06b6d4", width=4, shape="spline", smoothing=0.75),
             marker=dict(size=9, color="#0891b2"),
             fillcolor="rgba(103, 232, 249, 0.28)",
             text=chart_df["Cumplimiento"].round(0).astype(int).astype(str) + "%",
@@ -2270,6 +2491,21 @@ def app():
         )
         for _, habit in habits_df.iterrows()
     }
+
+    # Se muestra al arranque de semana (domingo/lunes) para no convertir la
+    # pantalla diaria en un dashboard permanente.
+    days_since_week_start = (today - week_start).days
+    if 0 <= days_since_week_start <= 1:
+        previous_week_start = week_start - timedelta(days=7)
+        previous_week_end = week_start - timedelta(days=1)
+        previous_summary = build_previous_week_summary(
+            habits_df=habits_df,
+            all_logs_df=all_logs_df,
+            previous_week_start=previous_week_start,
+            previous_week_end=previous_week_end,
+            today=today,
+        )
+        render_previous_week_summary(previous_summary)
 
     if view_mode == "mobile":
         render_mobile_view(
