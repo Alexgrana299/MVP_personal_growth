@@ -1855,7 +1855,7 @@ def create_excel_download(df: pd.DataFrame) -> BytesIO:
     return output
 
 
-def build_completion_chart(chart_df: pd.DataFrame, height: int = 320) -> go.Figure:
+def build_completion_chart(chart_df: pd.DataFrame, height: int = 320, compact_mobile: bool = False) -> go.Figure:
     fig = go.Figure()
 
     fig.add_trace(
@@ -1873,15 +1873,18 @@ def build_completion_chart(chart_df: pd.DataFrame, height: int = 320) -> go.Figu
         )
     )
 
+    chart_margin = dict(l=0, r=0, t=20, b=0) if compact_mobile else dict(l=10, r=10, t=20, b=10)
+
     fig.update_layout(
         height=height,
-        margin=dict(l=10, r=10, t=20, b=10),
+        margin=chart_margin,
         paper_bgcolor="white",
         plot_bgcolor="white",
         font=dict(color="#0f172a", size=13),
         xaxis_title="",
         yaxis_title="",
         showlegend=False,
+        dragmode=False,
     )
 
     fig.update_yaxes(
@@ -1890,11 +1893,16 @@ def build_completion_chart(chart_df: pd.DataFrame, height: int = 320) -> go.Figu
         gridcolor="#e2e8f0",
         zeroline=False,
         tickformat=".0f",
+        fixedrange=True,
+        automargin=False,
+        ticklabelposition="inside" if compact_mobile else "outside",
     )
 
     fig.update_xaxes(
         showgrid=False,
         zeroline=False,
+        fixedrange=True,
+        automargin=False,
     )
 
     return fig
@@ -1965,7 +1973,16 @@ def render_desktop_view(
             st.subheader("Cumplimiento por día")
 
             fig = build_completion_chart(chart_df, height=320)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(
+                fig,
+                use_container_width=True,
+                config={
+                    "displayModeBar": False,
+                    "responsive": True,
+                    "scrollZoom": False,
+                    "doubleClick": False,
+                },
+            )
 
             if not all_logs_df.empty:
                 excel_file = create_excel_download(all_logs_df)
@@ -2044,10 +2061,10 @@ def render_mobile_view(
     # ---------- Gráfica visible debajo de tarjetas ----------
     st.markdown("<div class='mv-section-title'>Cumplimiento por día</div>", unsafe_allow_html=True)
     chart_df = calculate_day_completion(edited_table)
-    fig = build_completion_chart(chart_df, height=240)
+    fig = build_completion_chart(chart_df, height=240, compact_mobile=True)
     fig.update_layout(
         autosize=True,
-        margin=dict(l=4, r=4, t=12, b=4),
+        margin=dict(l=0, r=0, t=12, b=0),
         dragmode=False,
     )
     with st.container(key="mobile_chart"):
