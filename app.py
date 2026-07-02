@@ -1136,6 +1136,59 @@ CUSTOM_CSS = """
         }
     }
 
+
+    /* ---------- Mobile v8: hanging indent for streak + centered clean chart ---------- */
+    @media (max-width: 599px) {
+        /* El texto del checkbox móvil incluye un prefijo visual de streak.
+           Con hanging-indent, si el hábito se parte en dos líneas, la segunda
+           línea inicia donde inicia el texto del hábito, no debajo del streak. */
+        .st-key-mobile_tracker div[data-testid="stCheckbox"] label > div p,
+        .st-key-mobile_tracker div[data-testid="stCheckbox"] p {
+            padding-left: 2.75rem !important;
+            text-indent: -2.75rem !important;
+            overflow-wrap: break-word !important;
+            word-break: normal !important;
+        }
+
+        /* Reserva visual de la columna streak también para filas no aplicables. */
+        .mv-static-habit-row {
+            grid-template-columns: 2.75rem minmax(0, 1fr) 58px !important;
+        }
+
+        .mv-row-streak {
+            width: 2.45rem !important;
+            min-width: 2.45rem !important;
+            max-width: 2.45rem !important;
+            justify-content: center !important;
+        }
+
+        .mv-static-habit-name {
+            overflow-wrap: break-word !important;
+            word-break: normal !important;
+        }
+
+        /* Plotly en móvil: ocupa todo el ancho disponible, sin desbordar y sin
+           quedar visualmente cargado a la izquierda. */
+        .st-key-mobile_chart,
+        .st-key-mobile_chart [data-testid="stElementContainer"],
+        .st-key-mobile_chart div[data-testid="stPlotlyChart"],
+        .st-key-mobile_chart .js-plotly-plot,
+        .st-key-mobile_chart .plot-container,
+        .st-key-mobile_chart .svg-container {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+            overflow: hidden !important;
+            box-sizing: border-box !important;
+        }
+
+        .st-key-mobile_chart .modebar {
+            display: none !important;
+        }
+    }
+
 </style>
 """
 
@@ -1992,7 +2045,23 @@ def render_mobile_view(
     st.markdown("<div class='mv-section-title'>Cumplimiento por día</div>", unsafe_allow_html=True)
     chart_df = calculate_day_completion(edited_table)
     fig = build_completion_chart(chart_df, height=240)
-    st.plotly_chart(fig, use_container_width=True)
+    fig.update_layout(
+        autosize=True,
+        margin=dict(l=4, r=4, t=12, b=4),
+        dragmode=False,
+    )
+    with st.container(key="mobile_chart"):
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+            config={
+                "displayModeBar": False,
+                "responsive": True,
+                "scrollZoom": False,
+                "doubleClick": False,
+                "staticPlot": False,
+            },
+        )
 
     st.write("")
 
@@ -2061,6 +2130,9 @@ def render_mobile_view(
                     # Prefijo visual de racha. Cuando no hay racha, se usan
                     # espacios Unicode invisibles para reservar el mismo ancho
                     # y que todos los nombres arranquen alineados en móvil.
+                    # El prefijo reserva una columna visual para la racha. El CSS aplica
+                    # hanging-indent para que, si el texto ocupa dos líneas, la segunda
+                    # línea arranque alineada con el nombre del hábito y no debajo del streak.
                     label_prefix = f"⭐{streak_value}  " if streak_value >= 3 else "⠀⠀⠀⠀"
                     visible_label = f"{label_prefix}{habit_name}"
 
