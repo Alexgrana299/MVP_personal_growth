@@ -1713,6 +1713,144 @@ CUSTOM_CSS = """
         }
     }
 
+
+    /* ---------- Product retention layer: today hero, autosave and heatmap ---------- */
+    .today-hero {
+        background: linear-gradient(135deg, #ecfeff 0%, #ffffff 58%, #f8fafc 100%);
+        border: 1px solid #cffafe;
+        border-radius: 24px;
+        padding: 1.05rem 1.1rem;
+        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+        margin-bottom: 1rem;
+    }
+
+    .today-hero-kicker {
+        color: #0891b2;
+        font-size: 0.78rem;
+        font-weight: 950;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-bottom: 0.25rem;
+    }
+
+    .today-hero-main {
+        color: #0f172a;
+        font-size: 2.15rem;
+        line-height: 1;
+        font-weight: 950;
+        letter-spacing: -0.05em;
+    }
+
+    .today-hero-status {
+        color: #0f172a;
+        font-size: 1rem;
+        font-weight: 900;
+        margin-top: 0.35rem;
+    }
+
+    .today-progress-track {
+        width: 100%;
+        height: 12px;
+        background: #e2e8f0;
+        border-radius: 999px;
+        overflow: hidden;
+        margin-top: 0.75rem;
+    }
+
+    .today-progress-fill {
+        height: 100%;
+        background: linear-gradient(135deg, #0e7490 0%, #06b6d4 65%, #67e8f9 100%);
+        border-radius: 999px;
+        transition: width 220ms ease;
+    }
+
+    .today-hero-message {
+        color: #475569;
+        font-size: 0.88rem;
+        font-weight: 750;
+        margin-top: 0.65rem;
+    }
+
+    .autosave-note {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        color: #0f766e;
+        background: #f0fdfa;
+        border: 1px solid #ccfbf1;
+        border-radius: 999px;
+        padding: 0.38rem 0.65rem;
+        font-size: 0.78rem;
+        font-weight: 850;
+        margin: 0.15rem 0 0.85rem 0;
+    }
+
+    .selected-day-banner {
+        color: #334155;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        padding: 0.6rem 0.75rem;
+        font-size: 0.83rem;
+        font-weight: 850;
+        margin: 0.5rem 0 0.75rem 0;
+    }
+
+    .insight-card {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 20px;
+        padding: 0.9rem 1rem;
+        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.045);
+        margin-bottom: 1rem;
+    }
+
+    .insight-card-title {
+        color: #0f172a;
+        font-size: 0.92rem;
+        font-weight: 950;
+        margin-bottom: 0.15rem;
+    }
+
+    .insight-card-subtitle {
+        color: #64748b;
+        font-size: 0.78rem;
+        font-weight: 750;
+        margin-bottom: 0.45rem;
+    }
+
+    .settings-spacer {
+        height: 0.75rem;
+    }
+
+    @media (max-width: 599px) {
+        .today-hero {
+            padding: 0.95rem 0.9rem;
+            border-radius: 20px;
+            margin-bottom: 0.85rem;
+        }
+
+        .today-hero-main {
+            font-size: 2rem;
+        }
+
+        .today-progress-track {
+            height: 11px;
+        }
+
+        .autosave-note {
+            width: 100%;
+            justify-content: center;
+            box-sizing: border-box;
+        }
+
+        .insight-card {
+            border-radius: 18px;
+            padding: 0.85rem 0.75rem;
+        }
+    }
+
+
 </style>
 """
 
@@ -2209,8 +2347,8 @@ def resolve_view_mode() -> str:
     return "desktop"
 
 
-def render_habit_manager(username: str):
-    with st.expander("⚙️ Gestionar hábitos", expanded=False):
+def render_habit_manager(username: str, all_logs_df: pd.DataFrame | None = None):
+    with st.expander("⚙️ Configuración", expanded=False):
         col_add, col_edit, col_session = st.columns([1, 1.2, 0.7], gap="large")
 
         with col_add:
@@ -2303,6 +2441,20 @@ def render_habit_manager(username: str):
         with col_session:
             st.subheader("Sesión")
             st.write("")
+
+            if all_logs_df is not None and not all_logs_df.empty:
+                excel_file = create_excel_download(all_logs_df)
+
+                st.download_button(
+                    label="Descargar base de datos",
+                    data=excel_file,
+                    file_name=f"personal_growth_{username}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                )
+
+                st.write("")
+
             if st.button("Cerrar sesión", use_container_width=True):
                 st.session_state.clear()
                 st.rerun()
@@ -2336,6 +2488,7 @@ def render_tracker(
 ) -> pd.DataFrame:
     records = []
     log_map = get_log_map(logs_df)
+    habit_records = habits_df.to_dict("records")
 
     render_tracker_header(current_day_letter)
 
@@ -2348,7 +2501,7 @@ def render_tracker(
         with st.expander(category, expanded=True, key=f"desktop_cat_{category}"):
             for _, habit in category_habits.iterrows():
                 habit_id = habit["id"]
-                habit_name = habit["habit_name"]
+                habit_name = str(habit["habit_name"])
                 active_days = get_habit_active_days(habit)
                 streak_value = streaks.get(habit_id, 0)
 
@@ -2368,7 +2521,7 @@ def render_tracker(
 
                 with cols[1]:
                     st.markdown(
-                        f"<div class='habit-name'>{habit_name}</div>",
+                        f"<div class='habit-name'>{html.escape(habit_name)}</div>",
                         unsafe_allow_html=True,
                     )
 
@@ -2399,6 +2552,16 @@ def render_tracker(
                             key=key,
                             label_visibility="collapsed",
                             disabled=is_future,
+                            on_change=on_habit_checked,
+                            args=(
+                                username,
+                                habit_records,
+                                week_dates,
+                                habit_name,
+                                fecha_date,
+                                day_letter,
+                                key,
+                            ),
                         )
 
                     row[day_letter] = bool(st.session_state[key])
@@ -2471,6 +2634,331 @@ def save_week(username: str, edited_table: pd.DataFrame, week_dates: list[date])
             .upsert(records, on_conflict="user_name,fecha,habit_id")
             .execute()
         )
+
+
+def save_single_log(
+    username: str,
+    habit_id: str,
+    habit_name: str,
+    category: str,
+    fecha: date,
+    day_letter: str,
+    valor: bool,
+):
+    """Guarda un solo hábito de forma inmediata.
+
+    Esto convierte el registro diario en una acción de un toque: el usuario
+    marca/desmarca y Supabase queda actualizado sin depender del botón de
+    "Guardar semana".
+    """
+    supabase = get_supabase_client()
+
+    record = {
+        "user_name": username,
+        "fecha": fecha.isoformat(),
+        "anio": fecha.year,
+        "semana": fecha.isocalendar().week,
+        "dia": day_letter,
+        "habit_id": habit_id,
+        "category": category,
+        "habit_name": habit_name,
+        "valor": int(bool(valor)),
+    }
+
+    (
+        supabase
+        .table("habit_logs")
+        .upsert([record], on_conflict="user_name,fecha,habit_id")
+        .execute()
+    )
+
+
+def save_day_snapshot(
+    username: str,
+    habits_records: list[dict],
+    week_dates: list[date],
+    day_letter: str,
+):
+    """Guarda el estado completo de un día.
+
+    Importante para autosave: si solo se guardara el checkbox tocado, el
+    histórico quedaría sesgado porque los hábitos no tocados no existirían como
+    intentos fallidos. Este snapshot conserva métricas honestas.
+    """
+    if day_letter not in DAY_LETTERS:
+        return
+
+    supabase = get_supabase_client()
+    day_index = DAY_LETTERS.index(day_letter)
+    fecha = week_dates[day_index]
+    records = []
+
+    for habit in habits_records:
+        habit_id = habit.get("id")
+        habit_name = str(habit.get("habit_name", "Hábito"))
+        category = habit.get("category", "")
+        active_days = get_habit_active_days(habit)
+
+        if not habit_id or day_letter not in active_days:
+            continue
+
+        key = f"check_{username}_{habit_id}_{fecha.isoformat()}"
+        valor = int(bool(st.session_state.get(key, False)))
+
+        records.append({
+            "user_name": username,
+            "fecha": fecha.isoformat(),
+            "anio": fecha.year,
+            "semana": fecha.isocalendar().week,
+            "dia": day_letter,
+            "habit_id": habit_id,
+            "category": category,
+            "habit_name": habit_name,
+            "valor": valor,
+        })
+
+    if records:
+        (
+            supabase
+            .table("habit_logs")
+            .upsert(records, on_conflict="user_name,fecha,habit_id")
+            .execute()
+        )
+
+
+def on_habit_checked(
+    username: str,
+    habits_records: list[dict],
+    week_dates: list[date],
+    habit_name: str,
+    fecha: date,
+    day_letter: str,
+    key: str,
+):
+    valor = bool(st.session_state.get(key, False))
+
+    save_day_snapshot(
+        username=username,
+        habits_records=habits_records,
+        week_dates=week_dates,
+        day_letter=day_letter,
+    )
+
+    st.session_state["_perfect_day_check"] = day_letter
+    st.session_state["_perfect_day_date"] = fecha.isoformat()
+    st.session_state["_last_autosave_habit"] = habit_name
+    st.session_state["_last_autosave_value"] = valor
+
+def get_completion_status(percentage: float) -> tuple[str, str]:
+    if percentage >= 100:
+        return "Día perfecto", "Cerraste todo lo que tocaba hoy. Protege esa identidad."
+    if percentage >= 70:
+        return "Buen día", "Ya estás del lado correcto. Remata."
+    if percentage >= 40:
+        return "Día recuperable", "Todavía puedes salvar el día."
+    if percentage > 0:
+        return "Arrancaste", "No lo dejes morir aquí. El siguiente check importa."
+    return "Sin iniciar", "Haz el primer check. El momentum empieza ahí."
+
+
+def get_day_completion_counts(edited_table: pd.DataFrame, day_letter: str) -> tuple[int, int, float]:
+    if edited_table.empty or day_letter not in edited_table.columns:
+        return 0, 0, 0
+
+    values = edited_table[day_letter].dropna().astype(bool).astype(int)
+    completed = int(values.sum()) if len(values) else 0
+    total = int(len(values))
+    percentage = (completed / total * 100) if total else 0
+    return completed, total, percentage
+
+
+def get_week_completion_percentage(edited_table: pd.DataFrame) -> float:
+    if edited_table.empty:
+        return 0
+
+    semana_values = pd.Series(edited_table[DAY_LETTERS].values.flatten()).dropna().astype(bool).astype(int)
+    return semana_values.mean() * 100 if len(semana_values) else 0
+
+
+def render_today_hero(completed: int, total: int, percentage: float) -> None:
+    status, message = get_completion_status(percentage)
+    safe_width = max(0, min(100, percentage))
+
+    st.markdown(
+        f"""
+        <div class="today-hero">
+            <div class="today-hero-kicker">Hoy</div>
+            <div class="today-hero-main">{completed}/{total} hábitos</div>
+            <div class="today-hero-status">{html.escape(status)}</div>
+            <div class="today-progress-track">
+                <div class="today-progress-fill" style="width:{safe_width:.0f}%"></div>
+            </div>
+            <div class="today-hero-message">{html.escape(message)}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_autosave_note() -> None:
+    st.markdown(
+        "<div class='autosave-note'>● Guardado automático activado</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def show_autosave_feedback() -> None:
+    habit_name = st.session_state.pop("_last_autosave_habit", None)
+    value = st.session_state.pop("_last_autosave_value", None)
+
+    if not habit_name:
+        return
+
+    if value:
+        st.toast(f"Guardado · {habit_name}", icon="✅")
+    else:
+        st.toast(f"Actualizado · {habit_name}", icon="↩️")
+
+
+def maybe_celebrate_perfect_day(
+    username: str,
+    habits_df: pd.DataFrame,
+    week_dates: list[date],
+) -> None:
+    day_letter = st.session_state.pop("_perfect_day_check", None)
+    fecha_iso = st.session_state.pop("_perfect_day_date", None)
+
+    if not day_letter or not fecha_iso:
+        return
+
+    edited_table = build_week_table(username, habits_df, week_dates)
+    completed, total, percentage = get_day_completion_counts(edited_table, day_letter)
+
+    if total == 0 or percentage < 100:
+        return
+
+    celebration_key = f"celebrated_{username}_{fecha_iso}"
+    if st.session_state.get(celebration_key, False):
+        return
+
+    st.session_state[celebration_key] = True
+    st.balloons()
+    st.toast(f"Día perfecto · {completed}/{total} completados", icon="🏆")
+
+
+def build_consistency_heatmap(all_logs_df: pd.DataFrame, days_back: int = 98) -> go.Figure:
+    fig = go.Figure()
+
+    if all_logs_df.empty or "fecha" not in all_logs_df.columns or "valor" not in all_logs_df.columns:
+        fig.update_layout(
+            height=170,
+            margin=dict(l=0, r=0, t=10, b=10),
+            paper_bgcolor="white",
+            plot_bgcolor="white",
+            xaxis=dict(visible=False),
+            yaxis=dict(visible=False),
+        )
+        return fig
+
+    df = all_logs_df.copy()
+    df["fecha_dt"] = pd.to_datetime(df["fecha"], errors="coerce").dt.date
+    df = df.dropna(subset=["fecha_dt"])
+
+    end_date = get_local_today()
+    start_date = end_date - timedelta(days=days_back - 1)
+    df = df[(df["fecha_dt"] >= start_date) & (df["fecha_dt"] <= end_date)]
+
+    daily = (
+        df.groupby("fecha_dt")
+        .agg(done=("valor", lambda values: sum(bool(value) for value in values)), total=("valor", "count"))
+        .reset_index()
+    )
+    daily["rate"] = daily["done"] / daily["total"].where(daily["total"] != 0)
+
+    all_days = pd.DataFrame({
+        "fecha_dt": [start_date + timedelta(days=i) for i in range(days_back)]
+    })
+
+    daily = all_days.merge(daily, on="fecha_dt", how="left")
+    daily["rate"] = daily["rate"].fillna(0).astype(float)
+    daily["week"] = ((pd.to_datetime(daily["fecha_dt"]) - pd.to_datetime(start_date)).dt.days // 7).astype(int)
+    daily["weekday"] = pd.to_datetime(daily["fecha_dt"]).dt.weekday.astype(int)
+    daily["hover"] = daily.apply(
+        lambda row: f"{row['fecha_dt'].strftime('%d/%m/%Y')}<br>Consistencia: {row['rate']:.0%}",
+        axis=1,
+    )
+
+    day_labels = ["L", "M", "X", "J", "V", "S", "D"]
+    value_grid = daily.pivot(index="weekday", columns="week", values="rate").reindex(range(7)).fillna(0)
+    hover_grid = daily.pivot(index="weekday", columns="week", values="hover").reindex(range(7)).fillna("")
+
+    fig.add_trace(
+        go.Heatmap(
+            z=value_grid.values,
+            x=list(value_grid.columns),
+            y=day_labels,
+            text=hover_grid.values,
+            colorscale=[
+                [0.0, "#f1f5f9"],
+                [0.25, "#cffafe"],
+                [0.50, "#67e8f9"],
+                [0.75, "#06b6d4"],
+                [1.0, "#0e7490"],
+            ],
+            showscale=False,
+            hovertemplate="%{text}<extra></extra>",
+            xgap=3,
+            ygap=3,
+        )
+    )
+
+    fig.update_layout(
+        height=185,
+        margin=dict(l=0, r=0, t=8, b=8),
+        paper_bgcolor="white",
+        plot_bgcolor="white",
+        font=dict(color="#475569", size=11),
+        dragmode=False,
+        xaxis=dict(visible=False, fixedrange=True),
+        yaxis=dict(autorange="reversed", fixedrange=True, ticks="", showgrid=False),
+    )
+
+    return fig
+
+
+def render_consistency_heatmap(all_logs_df: pd.DataFrame) -> None:
+    st.markdown(
+        """
+        <div class="insight-card-title">Consistencia histórica</div>
+        <div class="insight-card-subtitle">Cada cuadro representa tu cumplimiento diario de los últimos 98 días.</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    fig = build_consistency_heatmap(all_logs_df)
+    st.plotly_chart(
+        fig,
+        use_container_width=True,
+        config={
+            "displayModeBar": False,
+            "responsive": True,
+            "scrollZoom": False,
+            "doubleClick": False,
+        },
+    )
+
+def render_selected_day_banner(selected_day_letter: str, selected_date: date, current_day_letter: str) -> None:
+    if selected_day_letter == current_day_letter:
+        return
+
+    st.markdown(
+        f"""
+        <div class='selected-day-banner'>
+            Editando {DAY_NAMES_SHORT[selected_day_letter]} · {selected_date.day}/{selected_date.month}. Los cambios también se guardan automático.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def create_excel_download(df: pd.DataFrame) -> BytesIO:
@@ -2670,7 +3158,8 @@ def render_desktop_view(
 
         with right:
             st.subheader("Tracker semanal")
-            st.caption(f"Día actual: {current_day_letter}")
+            st.caption(f"Día actual: {current_day_letter} · los cambios se guardan automático")
+            render_autosave_note()
 
             # key="tracker_scroll" scopes the CSS that keeps every habit row
             # in one line and, on phones, scrolls horizontally instead of
@@ -2690,24 +3179,24 @@ def render_desktop_view(
 
             st.write("")
 
-            if st.button("Guardar semana", use_container_width=True, type="primary"):
+            if st.button("Guardar todo ahora (respaldo)", use_container_width=True):
                 save_week(username, edited_table, week_dates)
                 st.success("Semana guardada correctamente. Si ya existía, se actualizó sin duplicados.")
                 st.rerun()
 
         with left:
             chart_df = calculate_day_completion(edited_table)
+            cumplimiento_semana = get_week_completion_percentage(edited_table)
+            completed_today, total_today, cumplimiento_hoy = get_day_completion_counts(
+                edited_table,
+                current_day_letter,
+            )
 
-            if edited_table.empty:
-                cumplimiento_semana = 0
-                cumplimiento_hoy = 0
-            else:
-                semana_values = edited_table[DAY_LETTERS].values.flatten()
-                semana_values = pd.Series(semana_values).dropna().astype(bool).astype(int)
-                cumplimiento_semana = semana_values.mean() * 100 if len(semana_values) else 0
-
-                hoy_values = edited_table[current_day_letter].dropna().astype(bool).astype(int)
-                cumplimiento_hoy = hoy_values.mean() * 100 if len(hoy_values) else 0
+            render_today_hero(
+                completed=completed_today,
+                total=total_today,
+                percentage=cumplimiento_hoy,
+            )
 
             m1, m2 = st.columns(2)
             m1.metric("Cumplimiento semana", f"{cumplimiento_semana:.0f}%")
@@ -2716,7 +3205,7 @@ def render_desktop_view(
             st.write("")
             st.subheader("Cumplimiento por día")
 
-            fig = build_completion_chart(chart_df, height=320)
+            fig = build_completion_chart(chart_df, height=300)
             st.plotly_chart(
                 fig,
                 use_container_width=True,
@@ -2728,17 +3217,7 @@ def render_desktop_view(
                 },
             )
 
-            if not all_logs_df.empty:
-                excel_file = create_excel_download(all_logs_df)
-
-                st.download_button(
-                    label="Descargar base de datos en Excel",
-                    data=excel_file,
-                    file_name=f"personal_growth_{username}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True,
-                )
-
+            render_consistency_heatmap(all_logs_df)
 
 def render_mobile_view(
     username: str,
@@ -2750,18 +3229,14 @@ def render_mobile_view(
     streaks: dict,
     all_logs_df: pd.DataFrame,
 ):
-    """Vista móvil optimizada.
+    """Vista móvil optimizada para uso diario.
 
-    En celular no se renderiza la tabla de 7 días. Se usa un dropdown para
-    elegir un solo día y cada hábito se muestra como fila de 3 columnas:
-    racha | texto | checkbox. Esto elimina el desbordamiento horizontal en
-    iPhone y mantiene la misma lógica de session_state / guardado.
+    Prioridad: abrir, marcar hábitos y salir. Los análisis quedan después del
+    registro para que no compitan con la acción principal.
     """
     if "mobile_selected_day" not in st.session_state:
         st.session_state["mobile_selected_day"] = current_day_letter
 
-    # En móvil se permiten días pasados y el día actual. No se permiten días
-    # futuros para no adelantar datos.
     selectable_days = [
         day_letter
         for i, day_letter in enumerate(DAY_LETTERS)
@@ -2774,53 +3249,122 @@ def render_mobile_view(
     if st.session_state["mobile_selected_day"] not in selectable_days:
         st.session_state["mobile_selected_day"] = current_day_letter
 
-    selected_day_letter = st.session_state["mobile_selected_day"]
+    edited_table = build_week_table(username, habits_df, week_dates)
+    habit_records = habits_df.to_dict("records")
+    cumplimiento_semana = get_week_completion_percentage(edited_table)
+    completed_today, total_today, cumplimiento_hoy = get_day_completion_counts(
+        edited_table,
+        current_day_letter,
+    )
+
+    render_today_hero(
+        completed=completed_today,
+        total=total_today,
+        percentage=cumplimiento_hoy,
+    )
+
+    # Selector compacto. El default es hoy; solo se usa para corregir días pasados.
+    st.markdown("<div class='mv-day-select-label'>Día a registrar</div>", unsafe_allow_html=True)
+
+    def day_option_label(day_letter: str) -> str:
+        day_date = week_dates[DAY_LETTERS.index(day_letter)]
+        today_tag = " · Hoy" if day_letter == current_day_letter else ""
+        return f"{DAY_NAMES_SHORT[day_letter]} · {day_date.day}/{day_date.month}{today_tag}"
+
+    with st.container(key="mobile_day_dropdown"):
+        selected_day_letter = st.selectbox(
+            "Día a registrar",
+            options=selectable_days,
+            index=selectable_days.index(st.session_state["mobile_selected_day"]),
+            format_func=day_option_label,
+            label_visibility="collapsed",
+            key="mobile_day_selectbox",
+        )
+
+    if selected_day_letter != st.session_state["mobile_selected_day"]:
+        st.session_state["mobile_selected_day"] = selected_day_letter
+        st.rerun()
+
     selected_index = DAY_LETTERS.index(selected_day_letter)
     selected_date = week_dates[selected_index]
+    completed_selected, total_selected, cumplimiento_dia_sel = get_day_completion_counts(
+        edited_table,
+        selected_day_letter,
+    )
 
-    edited_table = build_week_table(username, habits_df, week_dates)
+    render_selected_day_banner(selected_day_letter, selected_date, current_day_letter)
+    render_autosave_note()
 
-    if edited_table.empty:
-        cumplimiento_semana = 0
-        cumplimiento_hoy = 0
-        cumplimiento_dia_sel = 0
-    else:
-        semana_values = pd.Series(edited_table[DAY_LETTERS].values.flatten()).dropna().astype(bool).astype(int)
-        cumplimiento_semana = semana_values.mean() * 100 if len(semana_values) else 0
-
-        hoy_values = edited_table[current_day_letter].dropna().astype(bool).astype(int)
-        cumplimiento_hoy = hoy_values.mean() * 100 if len(hoy_values) else 0
-
-        dia_sel_values = edited_table[selected_day_letter].dropna().astype(bool).astype(int)
-        cumplimiento_dia_sel = dia_sel_values.mean() * 100 if len(dia_sel_values) else 0
-
-    # ---------- Tarjetas de resumen ----------
-    # Se renderizan como HTML puro, sin st.container ni st.columns, para evitar
-    # que Streamlit cree un contenedor con scroll interno en móvil.
     st.markdown(
-        f"""
-        <div class="mobile-summary-shell">
-            <div class="mobile-metrics-stack">
-                <div class="mobile-metric-card">
-                    <div class="mobile-metric-label">Cumplimiento semana</div>
-                    <div class="mobile-metric-value">{cumplimiento_semana:.0f}%</div>
-                </div>
-                <div class="mobile-metric-card">
-                    <div class="mobile-metric-label">Cumplimiento hoy</div>
-                    <div class="mobile-metric-value">{cumplimiento_hoy:.0f}%</div>
-                </div>
-            </div>
-        </div>
-        """,
+        f"<div class='mv-habit-label'>Hábito · {completed_selected}/{total_selected} completados</div>",
         unsafe_allow_html=True,
     )
 
+    # ---------- Lista móvil: hábitos primero, insights después ----------
+    with st.container(key="mobile_tracker"):
+        for category in CATEGORIES:
+            category_habits = habits_df[habits_df["category"] == category]
+
+            if category_habits.empty:
+                continue
+
+            with st.expander(category, expanded=True, key=f"mobile_cat_{category}"):
+                for _, habit in category_habits.iterrows():
+                    habit_id = habit["id"]
+                    habit_name = str(habit["habit_name"])
+                    active_days = get_habit_active_days(habit)
+                    streak_value = streaks.get(habit_id, 0)
+
+                    label_prefix = f"⭐{streak_value}  " if streak_value >= 3 else "⠀⠀⠀⠀"
+                    visible_label = f"{label_prefix}{habit_name}"
+
+                    if selected_day_letter not in active_days:
+                        streak_html = (
+                            f"<span class='mv-row-streak'>⭐{streak_value}</span>"
+                            if streak_value >= 3 else
+                            "<span class='mv-row-streak mv-row-streak-empty'></span>"
+                        )
+                        st.markdown(
+                            "<div class='mv-static-habit-row'>"
+                            f"{streak_html}"
+                            f"<span class='mv-static-habit-name'>{html.escape(habit_name)}</span>"
+                            "<span class='mv-static-na'>No aplica</span>"
+                            "</div>",
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        key = f"check_{username}_{habit_id}_{selected_date.isoformat()}"
+                        st.checkbox(
+                            label=visible_label,
+                            key=key,
+                            label_visibility="visible",
+                            on_change=on_habit_checked,
+                            args=(
+                                username,
+                                habit_records,
+                                week_dates,
+                                habit_name,
+                                selected_date,
+                                selected_day_letter,
+                                key,
+                            ),
+                        )
+
     st.write("")
 
-    # ---------- Gráfica visible debajo de tarjetas ----------
+    # Botón secundario de respaldo. La experiencia principal ya es autosave.
+    if st.button("Guardar todo ahora (respaldo)", use_container_width=True, key="mobile_backup_save_btn"):
+        latest_table = build_week_table(username, habits_df, week_dates)
+        save_week(username, latest_table, week_dates)
+        st.success("Semana guardada correctamente. Si ya existía, se actualizó sin duplicados.")
+        st.rerun()
+
+    st.write("")
+
+    # ---------- Análisis después del registro ----------
     st.markdown("<div class='mv-section-title'>Cumplimiento por día</div>", unsafe_allow_html=True)
     chart_df = calculate_day_completion(edited_table)
-    fig = build_completion_chart(chart_df, height=240, compact_mobile=True)
+    fig = build_completion_chart(chart_df, height=235, compact_mobile=True)
     fig.update_layout(
         autosize=True,
         margin=dict(l=0, r=0, t=12, b=34),
@@ -2841,119 +3385,26 @@ def render_mobile_view(
         )
 
     st.write("")
-
-    # ---------- Dropdown de día ----------
-    st.markdown("<div class='mv-day-select-label'>Selecciona un día</div>", unsafe_allow_html=True)
-
-    def day_option_label(day_letter: str) -> str:
-        day_date = week_dates[DAY_LETTERS.index(day_letter)]
-        today_tag = " · Hoy" if day_letter == current_day_letter else ""
-        return f"{DAY_NAMES_SHORT[day_letter]} · {day_date.day}/{day_date.month}{today_tag}"
-
-    with st.container(key="mobile_day_dropdown"):
-        selected_day_letter = st.selectbox(
-            "Selecciona un día",
-            options=selectable_days,
-            index=selectable_days.index(st.session_state["mobile_selected_day"]),
-            format_func=day_option_label,
-            label_visibility="collapsed",
-            key="mobile_day_selectbox",
-        )
-
-    if selected_day_letter != st.session_state["mobile_selected_day"]:
-        st.session_state["mobile_selected_day"] = selected_day_letter
-        st.rerun()
-
-    selected_index = DAY_LETTERS.index(selected_day_letter)
-    selected_date = week_dates[selected_index]
-    today_tag = " · Hoy" if selected_day_letter == current_day_letter else ""
-
-    # Recalcular cumplimiento del día seleccionado después del selectbox.
-    if edited_table.empty:
-        cumplimiento_dia_sel = 0
-    else:
-        dia_sel_values = edited_table[selected_day_letter].dropna().astype(bool).astype(int)
-        cumplimiento_dia_sel = dia_sel_values.mean() * 100 if len(dia_sel_values) else 0
-
-    # En móvil se elimina la tarjeta azul redundante de fecha/cumplimiento.
-    # La fecha ya aparece en el encabezado y el cumplimiento ya aparece en las métricas.
-    st.write("")
-    st.markdown("<div class='mv-habit-label'>Hábito</div>", unsafe_allow_html=True)
-
-    # ---------- Lista móvil: apartado colapsable + racha | hábito | checkbox ----------
-    with st.container(key="mobile_tracker"):
-        for category in CATEGORIES:
-            category_habits = habits_df[habits_df["category"] == category]
-
-            if category_habits.empty:
-                continue
-
-            with st.expander(category, expanded=True, key=f"mobile_cat_{category}"):
-                for _, habit in category_habits.iterrows():
-                    habit_id = habit["id"]
-                    habit_name = str(habit["habit_name"])
-                    active_days = get_habit_active_days(habit)
-                    streak_value = streaks.get(habit_id, 0)
-
-                    # En móvil NO usamos st.columns para cada hábito.
-                    # Streamlit apila/rompe columnas en anchos tipo iPhone y eso
-                    # genera desbordamiento horizontal. Cada hábito se renderiza
-                    # como una sola fila; el CSS convierte el checkbox nativo en
-                    # una card con layout: streak | texto | checkbox.
-                    # Prefijo visual de racha. Cuando no hay racha, se usan
-                    # espacios Unicode invisibles para reservar el mismo ancho
-                    # y que todos los nombres arranquen alineados en móvil.
-                    # El prefijo reserva una columna visual para la racha. El CSS aplica
-                    # hanging-indent para que, si el texto ocupa dos líneas, la segunda
-                    # línea arranque alineada con el nombre del hábito y no debajo del streak.
-                    label_prefix = f"⭐{streak_value}  " if streak_value >= 3 else "⠀⠀⠀⠀"
-                    visible_label = f"{label_prefix}{habit_name}"
-
-                    if selected_day_letter not in active_days:
-                        streak_html = (
-                            f"<span class='mv-row-streak'>⭐{streak_value}</span>"
-                            if streak_value >= 3 else
-                            "<span class='mv-row-streak mv-row-streak-empty'></span>"
-                        )
-                        st.markdown(
-                            "<div class='mv-static-habit-row'>"
-                            f"{streak_html}"
-                            f"<span class='mv-static-habit-name'>{html.escape(habit_name)}</span>"
-                            "<span class='mv-static-na'>No aplica</span>"
-                            "</div>",
-                            unsafe_allow_html=True,
-                        )
-                    else:
-                        fecha = selected_date.isoformat()
-                        key = f"check_{username}_{habit_id}_{fecha}"
-                        st.checkbox(
-                            label=visible_label,
-                            key=key,
-                            label_visibility="visible",
-                        )
+    render_consistency_heatmap(all_logs_df)
 
     st.write("")
-
-    if st.button("Guardar semana", use_container_width=True, type="primary", key="mobile_save_btn"):
-        # Importante: reconstruir después de los widgets para guardar el estado
-        # más reciente del checkbox tocado en móvil.
-        latest_table = build_week_table(username, habits_df, week_dates)
-        save_week(username, latest_table, week_dates)
-        st.success("Semana guardada correctamente. Si ya existía, se actualizó sin duplicados.")
-        st.rerun()
-
-    st.write("")
-
-    if not all_logs_df.empty:
-        excel_file = create_excel_download(all_logs_df)
-
-        st.download_button(
-            label="Descargar base de datos en Excel",
-            data=excel_file,
-            file_name=f"personal_growth_{username}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-        )
+    st.markdown(
+        f"""
+        <div class="mobile-summary-shell">
+            <div class="mobile-metrics-stack">
+                <div class="mobile-metric-card">
+                    <div class="mobile-metric-label">Cumplimiento semana</div>
+                    <div class="mobile-metric-value">{cumplimiento_semana:.0f}%</div>
+                </div>
+                <div class="mobile-metric-card">
+                    <div class="mobile-metric-label">Cumplimiento del día seleccionado</div>
+                    <div class="mobile-metric-value">{cumplimiento_dia_sel:.0f}%</div>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 def app():
     username = st.session_state["username"]
@@ -3002,12 +3453,13 @@ def app():
             st.session_state["view_mode_override"] = "desktop" if view_mode == "mobile" else "mobile"
             st.rerun()
 
-    render_habit_manager(username)
+    show_autosave_feedback()
 
     habits_df = load_habits(username)
 
     if habits_df.empty:
-        st.info("Todavía no tienes hábitos. Agrega uno desde el panel de gestión.")
+        st.info("Todavía no tienes hábitos. Agrega uno desde configuración.")
+        render_habit_manager(username)
         return
 
     logs_df = load_week_logs(username, week_start, week_end)
@@ -3035,8 +3487,9 @@ def app():
         for _, habit in habits_df.iterrows()
     }
 
-    # Se muestra al arranque de semana (domingo/lunes) para no convertir la
-    # pantalla diaria en un dashboard permanente.
+    # Se muestra al arranque de semana (domingo/lunes), pero después del flujo
+    # diario para no bloquear la acción principal de registrar hábitos.
+    previous_summary = None
     days_since_week_start = (today - week_start).days
     if 0 <= days_since_week_start <= 1:
         previous_week_start = week_start - timedelta(days=7)
@@ -3048,7 +3501,6 @@ def app():
             previous_week_end=previous_week_end,
             today=today,
         )
-        render_previous_week_summary(previous_summary)
 
     if view_mode == "mobile":
         render_mobile_view(
@@ -3072,6 +3524,11 @@ def app():
             streaks=streaks,
             all_logs_df=all_logs_df,
         )
+
+    maybe_celebrate_perfect_day(username, habits_df, week_dates)
+    render_previous_week_summary(previous_summary)
+    st.markdown("<div class='settings-spacer'></div>", unsafe_allow_html=True)
+    render_habit_manager(username, all_logs_df)
 
 
 if "authenticated" not in st.session_state:
