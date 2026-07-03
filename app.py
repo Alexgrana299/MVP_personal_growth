@@ -1,16 +1,19 @@
 import hashlib
 import html
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from io import BytesIO
 
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
 from PIL import Image, ImageDraw, ImageFont
 from supabase import create_client
 
 
 APP_NAME = "Loom"
+APP_DEFAULT_TIMEZONE = "America/Monterrey"
 
 DAY_LETTERS = ["D", "L", "M", "X", "J", "V", "S"]
 CATEGORIES = ["Mañana", "Tarde", "Noche", "Deseables"]
@@ -1716,6 +1719,79 @@ CUSTOM_CSS = """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 
+def inject_browser_timezone_script() -> None:
+    """Detecta la zona horaria del navegador y la guarda en la URL.
+
+    Streamlit corre en servidor; `date.today()` usa la fecha del servidor,
+    no la del usuario. Este script obtiene la zona horaria real del navegador
+    con JavaScript y la manda a Python mediante query params. Si cambia, recarga
+    una vez la página para que toda la app use la fecha local correcta.
+    """
+    components.html(
+        """
+        <script>
+        (function () {
+            try {
+                const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                if (!tz) return;
+
+                const currentUrl = new URL(window.parent.location.href);
+                const currentTz = currentUrl.searchParams.get("tz");
+
+                if (currentTz !== tz) {
+                    currentUrl.searchParams.set("tz", tz);
+                    window.parent.history.replaceState(null, "", currentUrl.toString());
+                    window.parent.location.reload();
+                }
+            } catch (error) {
+                console.warn("No se pudo detectar la zona horaria del navegador:", error);
+            }
+        })();
+        </script>
+        """,
+        height=0,
+        width=0,
+    )
+
+
+def get_query_param(name: str) -> str | None:
+    """Lee query params compatible con versiones recientes y antiguas de Streamlit."""
+    try:
+        value = st.query_params.get(name, None)
+    except Exception:
+        try:
+            params = st.experimental_get_query_params()
+            value = params.get(name, [None])
+        except Exception:
+            value = None
+
+    if isinstance(value, list):
+        return value[0] if value else None
+
+    return value
+
+
+def get_user_timezone_name() -> str:
+    tz_name = get_query_param("tz")
+
+    if not tz_name:
+        return APP_DEFAULT_TIMEZONE
+
+    try:
+        ZoneInfo(tz_name)
+        return tz_name
+    except ZoneInfoNotFoundError:
+        return APP_DEFAULT_TIMEZONE
+
+
+def get_local_today() -> date:
+    """Fecha local del usuario, no del servidor."""
+    return datetime.now(ZoneInfo(get_user_timezone_name())).date()
+
+
+inject_browser_timezone_script()
+
+
 @st.cache_resource
 def get_supabase_client():
     url = st.secrets["SUPABASE_URL"]
@@ -2883,7 +2959,7 @@ def app():
     username = st.session_state["username"]
     display_name = st.session_state["display_name"]
 
-    today = date.today()
+    today = get_local_today()
     week_number = today.isocalendar().week
     week_start = get_week_start(today)
     week_dates = [week_start + timedelta(days=i) for i in range(7)]
