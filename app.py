@@ -2162,6 +2162,228 @@ def update_habit_active_days(habit_id: str, active_days: list[str]):
     supabase.table("habits").update({"active_days": active_days}).eq("id", habit_id).execute()
 
 
+def sync_habit_logs_metadata(username: str, habit_id: str, habit_name: str | None = None, category: str | None = None):
+    """Mantiene habit_logs alineado con la identidad visible del hábito.
+
+    La relación real vive en habit_id. Aun así, habit_logs guarda habit_name y
+    category como snapshot para reportes/descargas; si no se actualizan, Excel
+    y resúmenes pueden mostrar nombres viejos aunque la racha siga bien.
+    """
+    payload = {}
+
+    if habit_name is not None:
+        payload["habit_name"] = habit_name
+
+    if category is not None:
+        payload["category"] = category
+
+    if not payload:
+        return
+
+    supabase = get_supabase_client()
+    (
+        supabase
+        .table("habit_logs")
+        .update(payload)
+        .eq("user_name", username)
+        .eq("habit_id", habit_id)
+        .execute()
+    )
+
+
+def normalize_habit_orders(username: str) -> None:
+    """Reescribe sort_order como 1..N dentro de cada apartado.
+
+    Esto evita huecos, duplicados y rarezas después de mover hábitos entre
+    apartados o recuperar hábitos eliminados.
+    """
+    supabase = get_supabase_client()
+    habits_df = load_habits(username)
+
+    if habits_df.empty:
+        return
+
+    for category in CATEGORIES:
+        category_habits = habits_df[habits_df["category"] == category].copy()
+        if category_habits.empty:
+            continue
+
+        category_habits = category_habits.sort_values(["sort_order", "id"], kind="stable")
+
+        for order, (_, habit) in enumerate(category_habits.iterrows(), start=1):
+            current_order = int(habit.get("sort_order", 0) or 0)
+            if current_order == order:
+                continue
+
+            (
+                supabase
+                .table("habits")
+                .update({"sort_order": order})
+                .eq("id", habit["id"])
+                .execute()
+            )
+
+
+def update_habit_details(
+    username: str,
+    habit_id: str,
+    habit_name: str,
+    category: str,
+    active_days: list[str],
+) -> None:
+    """Actualiza nombre, apartado y días sin cambiar el habit_id.
+
+    Ese punto es clave: no se crea un hábito nuevo. Se conserva el mismo ID,
+    por lo tanto las rachas y el histórico siguen conectados.
+    """
+    supabase = get_supabase_client()
+    habit_name = habit_name.strip()
+
+    current_response = (
+        supabase
+        .table("habits")
+        .select("category, sort_order")
+        .eq("id", habit_id)
+        .eq("user_name", username)
+        .limit(1)
+        .execute()
+    )
+
+    current_row = current_response.data[0] if current_response.data else {}
+    current_category = current_row.get("category")
+
+    update_payload = {
+        "habit_name": habit_name,
+        "category": category,
+        "active_days": active_days,
+    }
+
+    # Si el usuario cambia el apartado desde el selector, se manda al final del
+    # nuevo apartado. Para ajustar una posición exacta usa Subir/Bajar después.
+    if current_category != category:
+        update_payload["sort_order"] = get_next_sort_order(username, category)
+
+    (
+        supabase
+        .table("habits")
+        .update(update_payload)
+        .eq("id", habit_id)
+        .eq("user_name", username)
+        .execute()
+    )
+
+    sync_habit_logs_metadata(
+        username=username,
+        habit_id=habit_id,
+        habit_name=habit_name,
+        category=category,
+    )
+    normalize_habit_orders(username)
+
+
+def swap_habit_sort_orders(first_habit: pd.Series, second_habit: pd.Series) -> None:
+    supabase = get_supabase_client()
+
+    first_order = int(first_habit.get("sort_order", 0) or 0)
+    second_order = int(second_habit.get("sort_order", 0) or 0)
+
+    (
+        supabase
+        .table("habits")
+        .update({"sort_order": second_order})
+        .eq("id", first_habit["id"])
+        .execute()
+    )
+    (
+        supabase
+        .table("habits")
+        .update({"sort_order": first_order})
+        .eq("id", second_habit["id"])
+        .execute()
+    )
+
+
+def move_habit(username: str, habit_id: str, direction: str) -> tuple[bool, str]:
+    """Mueve un hábito una posición visible hacia arriba o hacia abajo.
+
+    - Dentro del mismo apartado intercambia sort_order con el vecino.
+    - Si está en el borde, lo mueve al apartado anterior/siguiente.
+      Arriba: entra al final del apartado anterior.
+      Abajo: entra al inicio del apartado siguiente.
+    """
+    supabase = get_supabase_client()
+    habits_df = load_habits(username)
+
+    if habits_df.empty or habit_id not in habits_df["id"].tolist():
+        return False, "No encontré ese hábito."
+
+    selected_row = habits_df.loc[habits_df["id"] == habit_id].iloc[0]
+    category = str(selected_row["category"])
+
+    if category not in CATEGORIES:
+        return False, "Ese hábito tiene un apartado inválido."
+
+    category_index = CATEGORIES.index(category)
+    category_habits = habits_df[habits_df["category"] == category].reset_index(drop=True)
+    selected_positions = category_habits.index[category_habits["id"] == habit_id].tolist()
+
+    if not selected_positions:
+        return False, "No encontré la posición del hábito."
+
+    position = selected_positions[0]
+
+    if direction == "up":
+        if position > 0:
+            previous_row = category_habits.iloc[position - 1]
+            swap_habit_sort_orders(selected_row, previous_row)
+            normalize_habit_orders(username)
+            return True, "Hábito subido."
+
+        if category_index == 0:
+            return False, "Ese hábito ya está hasta arriba."
+
+        new_category = CATEGORIES[category_index - 1]
+        new_order = get_next_sort_order(username, new_category)
+        (
+            supabase
+            .table("habits")
+            .update({"category": new_category, "sort_order": new_order})
+            .eq("id", habit_id)
+            .eq("user_name", username)
+            .execute()
+        )
+        sync_habit_logs_metadata(username, habit_id, category=new_category)
+        normalize_habit_orders(username)
+        return True, f"Hábito movido a {new_category}."
+
+    if direction == "down":
+        if position < len(category_habits) - 1:
+            next_row = category_habits.iloc[position + 1]
+            swap_habit_sort_orders(selected_row, next_row)
+            normalize_habit_orders(username)
+            return True, "Hábito bajado."
+
+        if category_index == len(CATEGORIES) - 1:
+            return False, "Ese hábito ya está hasta abajo."
+
+        new_category = CATEGORIES[category_index + 1]
+        # 0 lo coloca al inicio; normalize_habit_orders lo convierte en 1 y
+        # recorre el resto del apartado sin perder orden relativo.
+        (
+            supabase
+            .table("habits")
+            .update({"category": new_category, "sort_order": 0})
+            .eq("id", habit_id)
+            .eq("user_name", username)
+            .execute()
+        )
+        sync_habit_logs_metadata(username, habit_id, category=new_category)
+        normalize_habit_orders(username)
+        return True, f"Hábito movido a {new_category}."
+
+    return False, "Dirección inválida."
+
+
 def get_habit_active_days(habit) -> list[str]:
     """Días en los que un hábito aplica. Si no hay valor guardado (hábitos
     creados antes de este cambio), se asume que aplica todos los días."""
@@ -2349,7 +2571,7 @@ def resolve_view_mode() -> str:
 
 def render_habit_manager(username: str, all_logs_df: pd.DataFrame | None = None):
     with st.expander("⚙️ Configuración", expanded=False):
-        col_add, col_edit, col_session = st.columns([1, 1.2, 0.7], gap="large")
+        col_add, col_edit, col_session = st.columns([1, 1.35, 0.7], gap="large")
 
         with col_add:
             st.subheader("Agregar hábito")
@@ -2366,77 +2588,121 @@ def render_habit_manager(username: str, all_logs_df: pd.DataFrame | None = None)
                 submitted_add = st.form_submit_button("Agregar hábito")
 
             if submitted_add:
-                if new_habit.strip():
+                if new_habit.strip() and new_active_days:
                     add_habit(username, new_category, new_habit.strip(), new_active_days)
                     st.success("Hábito agregado.")
                     st.rerun()
-                else:
+                elif not new_habit.strip():
                     st.warning("Escribe un hábito.")
+                else:
+                    st.warning("Selecciona al menos un día.")
 
         with col_edit:
-            st.subheader("Editar / eliminar hábito")
+            st.subheader("Editar hábito")
 
             habits_for_edit = load_habits(username)
 
             if habits_for_edit.empty:
                 st.caption("No hay hábitos para editar.")
             else:
+                habits_for_edit = habits_for_edit.copy()
                 habits_for_edit["label"] = (
                     habits_for_edit["category"].astype(str)
                     + " · "
                     + habits_for_edit["habit_name"].astype(str)
                 )
 
-                options = habits_for_edit["label"].tolist()
-                ids = habits_for_edit["id"].tolist()
+                habit_ids = habits_for_edit["id"].tolist()
+                label_by_id = habits_for_edit.set_index("id")["label"].to_dict()
 
-                # Recuerda el último hábito seleccionado para que, al recargar
-                # la app (agregar/guardar/etc.), el selector no vuelva al
-                # primer hábito de la lista por defecto.
+                # Usar el ID como valor evita errores si dos hábitos tienen el
+                # mismo nombre visible. El usuario ve la etiqueta; la app opera
+                # con habit_id.
                 remembered_id = st.session_state.get("manage_selected_habit_id")
-                default_index = ids.index(remembered_id) if remembered_id in ids else 0
+                default_index = habit_ids.index(remembered_id) if remembered_id in habit_ids else 0
 
-                selected_label = st.selectbox(
+                selected_id = st.selectbox(
                     "Selecciona hábito",
-                    options,
+                    habit_ids,
                     index=default_index,
                     key="manage_habit_select",
+                    format_func=lambda habit_id: label_by_id.get(habit_id, "Hábito"),
                 )
 
-                selected_row = habits_for_edit.loc[habits_for_edit["label"] == selected_label].iloc[0]
-                selected_id = selected_row["id"]
+                selected_row = habits_for_edit.loc[habits_for_edit["id"] == selected_id].iloc[0]
                 st.session_state["manage_selected_habit_id"] = selected_id
 
+                current_category = str(selected_row["category"])
+                current_category_index = CATEGORIES.index(current_category) if current_category in CATEGORIES else 0
                 current_active_days = get_habit_active_days(selected_row)
 
-                edited_active_days = st.multiselect(
-                    "Días en los que aplica",
-                    DAY_LETTERS,
-                    default=current_active_days,
-                    format_func=lambda d: DAY_NAMES_SHORT[d],
-                    key=f"active_days_edit_{selected_id}",
-                    help="Desmarca los días en los que este hábito no se debe "
-                         "contar (esos días quedarán bloqueados y no afectarán "
-                         "tu porcentaje de cumplimiento).",
-                )
+                with st.form(f"edit_habit_form_{selected_id}"):
+                    edited_habit_name = st.text_input(
+                        "Nombre del hábito",
+                        value=str(selected_row["habit_name"]),
+                        key=f"habit_name_edit_{selected_id}",
+                    )
+                    edited_category = st.selectbox(
+                        "Apartado",
+                        CATEGORIES,
+                        index=current_category_index,
+                        key=f"category_edit_{selected_id}",
+                        help="Si cambias el apartado desde aquí, el hábito se manda al final del nuevo apartado. Para una posición exacta usa Subir/Bajar.",
+                    )
+                    edited_active_days = st.multiselect(
+                        "Días en los que aplica",
+                        DAY_LETTERS,
+                        default=current_active_days,
+                        format_func=lambda d: DAY_NAMES_SHORT[d],
+                        key=f"active_days_edit_{selected_id}",
+                        help="Desmarca los días en los que este hábito no se debe contar.",
+                    )
+                    submitted_edit = st.form_submit_button("Guardar cambios", use_container_width=True)
 
-                btn_col1, btn_col2 = st.columns(2)
+                if submitted_edit:
+                    clean_name = edited_habit_name.strip()
+                    if not clean_name:
+                        st.warning("Escribe un nombre válido.")
+                    elif not edited_active_days:
+                        st.warning("Selecciona al menos un día.")
+                    else:
+                        update_habit_details(
+                            username=username,
+                            habit_id=selected_id,
+                            habit_name=clean_name,
+                            category=edited_category,
+                            active_days=edited_active_days,
+                        )
+                        st.success("Hábito actualizado sin perder histórico ni rachas.")
+                        st.rerun()
 
-                with btn_col1:
-                    if st.button("Guardar días", use_container_width=True):
-                        if edited_active_days:
-                            update_habit_active_days(selected_id, edited_active_days)
-                            st.success("Días actualizados.")
+                st.caption("Orden cronológico")
+                move_col1, move_col2 = st.columns(2)
+
+                with move_col1:
+                    if st.button("⬆️ Subir", use_container_width=True, key=f"move_up_{selected_id}"):
+                        moved, message = move_habit(username, selected_id, "up")
+                        if moved:
+                            st.success(message)
                             st.rerun()
                         else:
-                            st.warning("Selecciona al menos un día.")
+                            st.warning(message)
 
-                with btn_col2:
-                    if st.button("Eliminar hábito", use_container_width=True):
-                        deactivate_habit(selected_id)
-                        st.session_state.pop("manage_selected_habit_id", None)
-                        st.success("Hábito eliminado de la vista. El histórico se conserva.")
-                        st.rerun()
+                with move_col2:
+                    if st.button("⬇️ Bajar", use_container_width=True, key=f"move_down_{selected_id}"):
+                        moved, message = move_habit(username, selected_id, "down")
+                        if moved:
+                            st.success(message)
+                            st.rerun()
+                        else:
+                            st.warning(message)
+
+                st.caption("Zona peligrosa")
+                if st.button("Eliminar hábito", use_container_width=True, key=f"delete_habit_{selected_id}"):
+                    deactivate_habit(selected_id)
+                    st.session_state.pop("manage_selected_habit_id", None)
+                    st.success("Hábito eliminado de la vista. El histórico se conserva.")
+                    st.rerun()
 
         with col_session:
             st.subheader("Sesión")
@@ -2458,7 +2724,6 @@ def render_habit_manager(username: str, all_logs_df: pd.DataFrame | None = None)
             if st.button("Cerrar sesión", use_container_width=True):
                 st.session_state.clear()
                 st.rerun()
-
 
 def render_tracker_header(current_day_letter: str):
     """Renders the ⭐ D L M X J V S header using the exact same st.columns
