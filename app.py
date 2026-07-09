@@ -315,7 +315,7 @@ CUSTOM_CSS = """
     }
 
     div[data-testid="stCheckbox"]:has(input:disabled) {
-        opacity: 0.35;
+        opacity: 0.72;
     }
 
     div[data-testid="stCheckbox"]:has(input:disabled) label {
@@ -2005,6 +2005,16 @@ def get_day_letter(target_date: date) -> str:
     return mapping[target_date.weekday()]
 
 
+def is_day_editable(target_date: date, today: date) -> bool:
+    """Solo el día local actual se puede editar.
+
+    Los días anteriores quedan cerrados después del corte diario y los días
+    futuros siguen bloqueados. El valor guardado se conserva porque el checkbox
+    se inicializa desde habit_logs antes de renderizarse.
+    """
+    return target_date == today
+
+
 def load_habits(username: str) -> pd.DataFrame:
     supabase = get_supabase_client()
 
@@ -2808,15 +2818,16 @@ def render_tracker(
                     if key not in st.session_state:
                         st.session_state[key] = default_value
 
-                    # No se permite marcar días futuros, para no adelantar datos.
-                    is_future = fecha_date > today
+                    # Solo hoy se puede editar. Ayer y días previos quedan
+                    # cerrados, pero muestran el valor cargado desde Supabase.
+                    is_locked = not is_day_editable(fecha_date, today)
 
                     with cols[i + 2]:
                         st.checkbox(
                             label=f"{habit_name} {day_letter}",
                             key=key,
                             label_visibility="collapsed",
-                            disabled=is_future,
+                            disabled=is_locked,
                             on_change=on_habit_checked,
                             args=(
                                 username,
@@ -2858,9 +2869,21 @@ def calculate_day_completion(edited_table: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def save_week(username: str, edited_table: pd.DataFrame, week_dates: list[date]):
+def save_week(
+    username: str,
+    edited_table: pd.DataFrame,
+    week_dates: list[date],
+    today: date | None = None,
+):
+    """Guarda únicamente el día local actual.
+
+    El botón de respaldo no debe escribir fechas pasadas ni futuras. Las fechas
+    pasadas ya quedaron cerradas al corte del día; las futuras todavía no
+    existen como registro real del usuario.
+    """
     supabase = get_supabase_client()
     records = []
+    today = today or get_local_today()
 
     if edited_table.empty:
         return
@@ -2871,6 +2894,10 @@ def save_week(username: str, edited_table: pd.DataFrame, week_dates: list[date])
 
         for i, day_letter in enumerate(DAY_LETTERS):
             fecha = week_dates[i]
+
+            if not is_day_editable(fecha, today):
+                continue
+
             cell_value = row[day_letter]
 
             # Celda excluida para este hábito: no se guarda, no debe afectar
@@ -2916,6 +2943,9 @@ def save_single_log(
     marca/desmarca y Supabase queda actualizado sin depender del botón de
     "Guardar semana".
     """
+    if not is_day_editable(fecha, get_local_today()):
+        return
+
     supabase = get_supabase_client()
 
     record = {
@@ -2953,9 +2983,13 @@ def save_day_snapshot(
     if day_letter not in DAY_LETTERS:
         return
 
-    supabase = get_supabase_client()
     day_index = DAY_LETTERS.index(day_letter)
     fecha = week_dates[day_index]
+
+    if not is_day_editable(fecha, get_local_today()):
+        return
+
+    supabase = get_supabase_client()
     records = []
 
     for habit in habits_records:
@@ -3000,6 +3034,9 @@ def on_habit_checked(
     day_letter: str,
     key: str,
 ):
+    if not is_day_editable(fecha, get_local_today()):
+        return
+
     valor = bool(st.session_state.get(key, False))
 
     save_day_snapshot(
@@ -3212,14 +3249,31 @@ def render_consistency_heatmap(all_logs_df: pd.DataFrame) -> None:
         },
     )
 
-def render_selected_day_banner(selected_day_letter: str, selected_date: date, current_day_letter: str) -> None:
-    if selected_day_letter == current_day_letter:
+def render_selected_day_banner(
+    selected_day_letter: str,
+    selected_date: date,
+    current_day_letter: str,
+    today: date,
+) -> None:
+    if selected_date == today:
         return
+
+    if selected_date < today:
+        message = (
+            f"Viendo {DAY_NAMES_SHORT[selected_day_letter]} · "
+            f"{selected_date.day}/{selected_date.month}. Día cerrado: sus checks se conservan, "
+            "pero ya no se puede editar."
+        )
+    else:
+        message = (
+            f"Viendo {DAY_NAMES_SHORT[selected_day_letter]} · "
+            f"{selected_date.day}/{selected_date.month}. Día futuro bloqueado."
+        )
 
     st.markdown(
         f"""
         <div class='selected-day-banner'>
-            Editando {DAY_NAMES_SHORT[selected_day_letter]} · {selected_date.day}/{selected_date.month}. Los cambios también se guardan automático.
+            {html.escape(message)}
         </div>
         """,
         unsafe_allow_html=True,
@@ -3423,7 +3477,7 @@ def render_desktop_view(
 
         with right:
             st.subheader("Tracker semanal")
-            st.caption(f"Día actual: {current_day_letter} · los cambios se guardan automático")
+            st.caption(f"Día actual: {current_day_letter} · solo hoy se puede editar · los cambios se guardan automático")
             render_autosave_note()
 
             # key="tracker_scroll" scopes the CSS that keeps every habit row
@@ -3445,8 +3499,8 @@ def render_desktop_view(
             st.write("")
 
             if st.button("Guardar todo ahora (respaldo)", use_container_width=True):
-                save_week(username, edited_table, week_dates)
-                st.success("Semana guardada correctamente. Si ya existía, se actualizó sin duplicados.")
+                save_week(username, edited_table, week_dates, today)
+                st.success("Día actual guardado correctamente. Las fechas cerradas no se modificaron.")
                 st.rerun()
 
         with left:
@@ -3502,14 +3556,9 @@ def render_mobile_view(
     if "mobile_selected_day" not in st.session_state:
         st.session_state["mobile_selected_day"] = current_day_letter
 
-    selectable_days = [
-        day_letter
-        for i, day_letter in enumerate(DAY_LETTERS)
-        if week_dates[i] <= today
-    ]
-
-    if not selectable_days:
-        selectable_days = [current_day_letter]
+    # En móvil se muestran los 7 días de la semana para que el usuario pueda
+    # consultar lo cerrado y ver lo futuro, pero solo hoy queda editable.
+    selectable_days = list(DAY_LETTERS)
 
     if st.session_state["mobile_selected_day"] not in selectable_days:
         st.session_state["mobile_selected_day"] = current_day_letter
@@ -3528,17 +3577,23 @@ def render_mobile_view(
         percentage=cumplimiento_hoy,
     )
 
-    # Selector compacto. El default es hoy; solo se usa para corregir días pasados.
-    st.markdown("<div class='mv-day-select-label'>Día a registrar</div>", unsafe_allow_html=True)
+    # Selector compacto. El default es hoy; días pasados quedan visibles
+    # como consulta, pero ya no se pueden editar.
+    st.markdown("<div class='mv-day-select-label'>Día</div>", unsafe_allow_html=True)
 
     def day_option_label(day_letter: str) -> str:
         day_date = week_dates[DAY_LETTERS.index(day_letter)]
-        today_tag = " · Hoy" if day_letter == current_day_letter else ""
-        return f"{DAY_NAMES_SHORT[day_letter]} · {day_date.day}/{day_date.month}{today_tag}"
+        if day_date == today:
+            status_tag = " · Hoy"
+        elif day_date < today:
+            status_tag = " · Cerrado"
+        else:
+            status_tag = " · Bloqueado"
+        return f"{DAY_NAMES_SHORT[day_letter]} · {day_date.day}/{day_date.month}{status_tag}"
 
     with st.container(key="mobile_day_dropdown"):
         selected_day_letter = st.selectbox(
-            "Día a registrar",
+            "Día",
             options=selectable_days,
             index=selectable_days.index(st.session_state["mobile_selected_day"]),
             format_func=day_option_label,
@@ -3557,7 +3612,7 @@ def render_mobile_view(
         selected_day_letter,
     )
 
-    render_selected_day_banner(selected_day_letter, selected_date, current_day_letter)
+    render_selected_day_banner(selected_day_letter, selected_date, current_day_letter, today)
     render_autosave_note()
 
     st.markdown(
@@ -3599,10 +3654,13 @@ def render_mobile_view(
                         )
                     else:
                         key = f"check_{username}_{habit_id}_{selected_date.isoformat()}"
+                        is_locked = not is_day_editable(selected_date, today)
+
                         st.checkbox(
                             label=visible_label,
                             key=key,
                             label_visibility="visible",
+                            disabled=is_locked,
                             on_change=on_habit_checked,
                             args=(
                                 username,
@@ -3620,8 +3678,8 @@ def render_mobile_view(
     # Botón secundario de respaldo. La experiencia principal ya es autosave.
     if st.button("Guardar todo ahora (respaldo)", use_container_width=True, key="mobile_backup_save_btn"):
         latest_table = build_week_table(username, habits_df, week_dates)
-        save_week(username, latest_table, week_dates)
-        st.success("Semana guardada correctamente. Si ya existía, se actualizó sin duplicados.")
+        save_week(username, latest_table, week_dates, today)
+        st.success("Día actual guardado correctamente. Las fechas cerradas no se modificaron.")
         st.rerun()
 
     st.write("")
